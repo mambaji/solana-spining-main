@@ -13,3 +13,5 @@ tonic = "0.12"
 
 [build-dependencies]
 tonic-build = "0.12"
+# 🔧 修复：添加自动protoc下载支持
+prost-build = "0.13"

@@ -19,6 +19,8 @@ features = ["derive"]
 
 [dependencies.solana-program]
 version = "^2.1.7"
+# 🔧 修复：禁用entrypoint避免符号冲突  
+default-features = false
 
 [dependencies.thiserror]
 version = "^1.0"

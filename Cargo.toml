@@ -45,8 +45,9 @@ rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 
 # IDL解析相关依赖
-spl-token = "7.0.0"
-spl-associated-token-account = "3.0.2"
+# 🔧 修复：禁用entrypoint避免符号冲突
+spl-token = { version = "7.0.0", default-features = false, features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "3.0.2", default-features = false, features = ["no-entrypoint"] }
 solana-account-decoder = "2.1.7"
 hex = "0.4"
 solana-account-decoder-client-types = "2.1.7"
@@ -67,3 +68,5 @@ tonic-build = "0.12"
 [features]
 default = ["letsbonk"]
 letsbonk = ["raydium_launchpad_interface"]
+# 🔧 修复：客户端特性，禁用所有程序相关的entrypoint
+client = []
