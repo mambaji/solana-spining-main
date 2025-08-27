@@ -1,0 +1,565 @@
+{
+  "version": "1.0.0",
+  "name": "spl_token",
+  "instructions": [
+    {
+      "name": "initializeMint",
+      "accounts": [
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The mint to initialize"]
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Rent sysvar"]
+        }
+      ],
+      "args": [
+        {
+          "name": "decimals",
+          "type": "u8"
+        },
+        {
+          "name": "mintAuthority",
+          "type": "publicKey"
+        },
+        {
+          "name": "freezeAuthority",
+          "type": {
+            "option": "publicKey"
+          }
+        }
+      ],
+      "docs": ["Initialize a new mint"]
+    },
+    {
+      "name": "initializeMint2",
+      "accounts": [
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The mint to initialize"]
+        }
+      ],
+      "args": [
+        {
+          "name": "decimals",
+          "type": "u8"
+        },
+        {
+          "name": "mintAuthority",
+          "type": "publicKey"
+        },
+        {
+          "name": "freezeAuthority",
+          "type": {
+            "option": "publicKey"
+          }
+        }
+      ],
+      "docs": ["Initialize a new mint (without rent sysvar)"]
+    },
+    {
+      "name": "initializeAccount",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to initialize"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The mint that the account will hold"]
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The new account's owner/multisignature"]
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Rent sysvar"]
+        }
+      ],
+      "args": [],
+      "docs": ["Initialize a new account to hold tokens"]
+    },
+    {
+      "name": "initializeAccount2",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to initialize"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The mint that the account will hold"]
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["Rent sysvar"]
+        }
+      ],
+      "args": [
+        {
+          "name": "owner",
+          "type": "publicKey"
+        }
+      ],
+      "docs": ["Initialize a new account to hold tokens (with owner in instruction data)"]
+    },
+    {
+      "name": "initializeAccount3",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to initialize"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The mint that the account will hold"]
+        }
+      ],
+      "args": [
+        {
+          "name": "owner",
+          "type": "publicKey"
+        }
+      ],
+      "docs": ["Initialize a new account to hold tokens (without rent sysvar)"]
+    },
+    {
+      "name": "transfer",
+      "accounts": [
+        {
+          "name": "source",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The source account"]
+        },
+        {
+          "name": "destination",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The destination account"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The source account's owner/delegate"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "docs": ["Transfer tokens from one account to another"]
+    },
+    {
+      "name": "approve",
+      "accounts": [
+        {
+          "name": "source",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The source account"]
+        },
+        {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The delegate"]
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The source account owner"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "docs": ["Approve a delegate"]
+    },
+    {
+      "name": "revoke",
+      "accounts": [
+        {
+          "name": "source",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The source account"]
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The source account owner"]
+        }
+      ],
+      "args": [],
+      "docs": ["Revoke the delegate's authority"]
+    },
+    {
+      "name": "setAuthority",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The mint or account to change the authority of"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The current authority of the mint or account"]
+        }
+      ],
+      "args": [
+        {
+          "name": "authorityType",
+          "type": "u8"
+        },
+        {
+          "name": "newAuthority",
+          "type": {
+            "option": "publicKey"
+          }
+        }
+      ],
+      "docs": ["Set authority for a mint or account"]
+    },
+    {
+      "name": "mintTo",
+      "accounts": [
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The mint"]
+        },
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to mint tokens to"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The mint's minting authority"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "docs": ["Mint new tokens to an account"]
+    },
+    {
+      "name": "burn",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to burn from"]
+        },
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The account's owner/delegate"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "docs": ["Burn tokens by removing them from an account"]
+    },
+    {
+      "name": "closeAccount",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to close"]
+        },
+        {
+          "name": "destination",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to receive the remaining balance"]
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The account's owner"]
+        }
+      ],
+      "args": [],
+      "docs": ["Close an account by transferring all its SOL to the destination account"]
+    },
+    {
+      "name": "freezeAccount",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to freeze"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The mint freeze authority"]
+        }
+      ],
+      "args": [],
+      "docs": ["Freeze an account so it cannot be used until thawed"]
+    },
+    {
+      "name": "thawAccount",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to thaw"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The mint freeze authority"]
+        }
+      ],
+      "args": [],
+      "docs": ["Thaw a frozen account"]
+    },
+    {
+      "name": "transferChecked",
+      "accounts": [
+        {
+          "name": "source",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The source account"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "destination",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The destination account"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The source account's owner/delegate"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "decimals",
+          "type": "u8"
+        }
+      ],
+      "docs": ["Transfer tokens from one account to another, asserting the token mint and decimals"]
+    },
+    {
+      "name": "approveChecked",
+      "accounts": [
+        {
+          "name": "source",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The source account"]
+        },
+        {
+          "name": "mint",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "docs": ["The delegate"]
+        },
+        {
+          "name": "owner",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The source account owner"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "decimals",
+          "type": "u8"
+        }
+      ],
+      "docs": ["Approve a delegate, asserting the token mint and decimals"]
+    },
+    {
+      "name": "mintToChecked",
+      "accounts": [
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The mint"]
+        },
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to mint tokens to"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The mint's minting authority"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "decimals",
+          "type": "u8"
+        }
+      ],
+      "docs": ["Mint new tokens to an account, asserting the token mint decimals"]
+    },
+    {
+      "name": "burnChecked",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The account to burn from"]
+        },
+        {
+          "name": "mint",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The token mint"]
+        },
+        {
+          "name": "authority",
+          "isMut": false,
+          "isSigner": true,
+          "docs": ["The account's owner/delegate"]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "decimals",
+          "type": "u8"
+        }
+      ],
+      "docs": ["Burn tokens by removing them from an account, asserting the token mint decimals"]
+    },
+    {
+      "name": "syncNative",
+      "accounts": [
+        {
+          "name": "account",
+          "isMut": true,
+          "isSigner": false,
+          "docs": ["The native token account to sync"]
+        }
+      ],
+      "args": [],
+      "docs": ["Sync a native token account's lamports balance with its token amount"]
+    }
+  ],
+  "metadata": {
+    "name": "spl_token",
+    "version": "4.0.0",
+    "spec": "0.1.0",
+    "description": "SPL Token Program",
+    "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  }
+}

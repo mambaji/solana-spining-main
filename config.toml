@@ -1,0 +1,144 @@
+# Solana Trading Bot Configuration
+# Units: lamports (1 SOL = 10^9), bps (0.01%), ms, MB
+
+[general]
+default_slippage_bps = 300
+max_slippage_bps = 1000
+default_max_retries = 3
+retry_base_delay_ms = 1000
+network_timeout_ms = 30000
+verbose_logging = false
+
+[regions]
+shyft_rpc = "ny"
+shyft_grpc = "ny"
+zeroshot = "ny"
+
+[blockhash_cache]
+update_interval_ms = 100
+max_age_seconds = 10
+fallback_timeout_ms = 5000
+
+# Shyft RPC/gRPC service configuration
+[shyft]
+rpc_endpoint = "https://rpc.shyft.to"
+grpc_endpoint = "https://mainnet.solana.shyft.to"
+default_priority_fee = 100000
+max_priority_fee = 10000000
+default_commitment = "processed"
+timeout_seconds = 30
+enabled = true
+
+[shyft.rpc_regions]
+ny = "https://rpc.ny.shyft.to"
+va = "https://rpc.va.shyft.to"
+ams = "https://rpc.ams.shyft.to"
+fra = "https://rpc.fra.shyft.to"
+default = "ny"
+
+[shyft.grpc_regions]
+ny = "https://grpc.ny.shyft.to"
+va = "https://grpc.va.shyft.to"
+us = "https://grpc.us.shyft.to"
+eu = "https://grpc.eu.shyft.to"
+ams = "https://grpc.ams.shyft.to"
+fra = "https://grpc.fra.shyft.to"
+default = "ny"
+
+[zeroshot]
+default_tip_lamports = 1000000
+max_tip_lamports = 100000000
+timeout_seconds = 10
+enabled = true
+
+[zeroshot.regions]
+ny = "http://ny1.0slot.trade"
+de = "http://de.0slot.trade"
+ams = "http://ams.0slot.trade"
+jp = "http://jp.0slot.trade"
+la = "http://la.0slot.trade"
+default = "ny"
+
+[zeroshot.tip_accounts]
+accounts = [
+    "4HiwLEP2Bzqj3hM2ENxJuzhcPCdsafwiet3oGkMkuQY4",
+    "7toBU3inhmrARGngC7z6SjyP85HgGMmCTEwGNRAcYnEK",
+    "8mR3wB1nh4D6J9RUCugxUpc6ya8w38LPxZ3ZjcBhgzws",
+    "6SiVU5WEwqfFapRuYCndomztEwDjvS5xgtEof3PLEGm9",
+    "TpdxgNJBWZRL8UXF5mrEsyWxDWx9HQexA9P1eTWQ42p",
+    "D8f3WkQu6dCF33cZxuAsrKHrGsqGP2yvAHf8mX6RXnwf",
+    "GQPFicsy3P3NXxB5piJohoxACqTvWE9fKpLgdsMduoHE",
+    "Ey2JEr8hDkgN8qKJGrLf2yFjRhW7rab99HVxwi5rcvJE",
+    "4iUgjMT8q2hNZnLuhpqZ1QtiV8deFPy2ajvvjEpKKgsS",
+    "3Rz8uD83QsU8wKvZbgWAPvCNDU6Fy8TSZTMcPm3RB6zt",
+]
+
+# Trading Platforms
+[pumpfun]
+program_id = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+global_account = "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf"
+fee_recipient = "CebN5WGQ4jvEPvsVU4EoHEpgzq1VV9Q6iW8K7kLiXyFK"
+default_slippage_bps = 500
+min_sol_amount = 1000000
+max_sol_amount = 1000000000000
+
+[raydium]
+amm_program_id = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
+launchpad_program_id = "F4NEaRvjuT41M3xK9xAzJzDV6QZh3GWb6MFsWiLT9MdT"
+
+# Trading Strategy
+[strategy.token_filter]
+min_liquidity_sol = 100000000
+max_market_cap = 100000000000000
+min_volume_24h = 1000000000
+max_holders = 10000
+
+[strategy.trading]
+buy_amount_lamports = 1000000
+take_profit_percent = 200.0
+stop_loss_percent = 50.0
+max_positions = 1
+
+# System Configuration
+[monitoring]
+metrics_enabled = true
+metrics_interval_seconds = 60
+alert_on_errors = true
+max_error_rate_percent = 5.0
+
+[compute_budget]
+enabled = true
+fee_refresh_interval_seconds = 5
+fee_history_duration_seconds = 60
+base_priority_fee = 10000
+max_priority_fee = 100000000
+
+[compute_budget.pumpfun_buy]
+compute_units = 68888
+[compute_budget.pumpfun_buy.fee_tiers]
+economy = 25
+standard = 50
+priority = 75
+express = 90
+lightning = 95
+
+[compute_budget.pumpfun_sell]
+compute_units = 58888
+[compute_budget.pumpfun_sell.fee_tiers]
+economy = 25
+standard = 50
+priority = 75
+express = 90
+lightning = 95
+
+[compute_budget.defaults]
+buy_default_tier = "lightning"
+sell_default_tier = "standard"
+emergency_sell_tier = "priority"
+
+[logging]
+level = "info"
+file_enabled = true
+console_enabled = true
+max_file_size_mb = 100
+max_files = 10

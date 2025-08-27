@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug solana-spining",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=solana-spining",
+                    "--package=solana-spining"
+                ],
+                "filter": {
+                    "name": "solana-spining",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "letsbonk",
+                "--execution",
+                "zero-slot", 
+                "--trading-enabled"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug"
+            }
+        }
+    ]
+}
