@@ -331,7 +331,7 @@ impl OptimizedExecutorManager {
     pub fn create_executor(&self) -> ExecutionStrategy {
         if self.zeroshot_executor.is_some() {
             ExecutionStrategy::ZeroSlot {   
-                tip_lamports: (self.config.zeroshot.default_tip_lamports as f64 * 2.5) as u64,
+                tip_lamports: self.config.zeroshot.default_tip_lamports,
                 region: self.config.zeroshot.default_region.clone(),
             }
         } else {

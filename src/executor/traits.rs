@@ -89,15 +89,6 @@ pub trait TransactionExecutor: Send + Sync {
 
 /// 交易构建器trait
 pub trait TransactionBuilder {
-    /// 构建PumpFun买入交易
-    fn build_pumpfun_buy(
-        &self,
-        mint: &Pubkey,
-        buyer: &Pubkey,
-        sol_amount: u64,
-        min_tokens_out: u64,
-    ) -> Result<solana_sdk::instruction::Instruction, ExecutionError>;
-
     /// 构建PumpFun买入交易 (带 creator 参数)
     fn build_pumpfun_buy_with_creator(
         &self,
@@ -106,15 +97,6 @@ pub trait TransactionBuilder {
         sol_amount: u64,
         min_tokens_out: u64,
         creator: &Pubkey,
-    ) -> Result<solana_sdk::instruction::Instruction, ExecutionError>;
-
-    /// 构建PumpFun卖出交易
-    fn build_pumpfun_sell(
-        &self,
-        mint: &Pubkey,
-        seller: &Pubkey,
-        token_amount: u64,
-        min_sol_out: u64,
     ) -> Result<solana_sdk::instruction::Instruction, ExecutionError>;
 
     /// 构建PumpFun卖出交易 (带 creator 参数)

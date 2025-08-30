@@ -12,7 +12,7 @@ pub use config::StreamShyftConfig;
 pub use processors::{TokenEvent, TransactionType, TokenDetector, process_transaction_for_tokens};
 pub use streams::{ShyftStream, LetsbonkStream};
 pub use strategy::{
-    TokenFilter, FilterCriteria, FilterResult, TokenSniper,
+    // TokenFilter, FilterCriteria, FilterResult, TokenSniper,
     TradeSignal, TradeSignalType, SignalPriority,
     Position, PositionStatus, TradeRecord,
     StrategyConfig,

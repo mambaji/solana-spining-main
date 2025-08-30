@@ -572,20 +572,6 @@ impl TransactionBuilder {
 }
 
 impl TransactionBuilderTrait for TransactionBuilder {
-    /// 构建PumpFun买入交易
-    fn build_pumpfun_buy(
-        &self,
-        _mint: &Pubkey,
-        _buyer: &Pubkey,
-        _sol_amount: u64,
-        _min_tokens_out: u64,
-    ) -> Result<Instruction, ExecutionError> {
-        // 注意：这个方法需要 creator 参数，建议使用 build_pumpfun_buy_with_creator
-        return Err(ExecutionError::InvalidParams(
-            "Use build_pumpfun_buy_with_creator instead - creator address required".to_string()
-        ));
-    }
-
     /// 构建PumpFun买入交易 (带 creator 参数)
     fn build_pumpfun_buy_with_creator(
         &self,
@@ -609,20 +595,6 @@ impl TransactionBuilderTrait for TransactionBuilder {
             accounts,
             data: instruction_data,
         })
-    }
-
-    /// 构建PumpFun卖出交易
-    fn build_pumpfun_sell(
-        &self,
-        _mint: &Pubkey,
-        _seller: &Pubkey,
-        _token_amount: u64,
-        _min_sol_out: u64,
-    ) -> Result<Instruction, ExecutionError> {
-        // 注意：这个方法需要 creator 参数，建议使用 build_pumpfun_sell_with_creator
-        return Err(ExecutionError::InvalidParams(
-            "Use build_pumpfun_sell_with_creator instead - creator address required".to_string()
-        ));
     }
 
     /// 构建PumpFun卖出交易 (带 creator 参数)
@@ -761,6 +733,7 @@ impl TransactionBuilderTrait for TransactionBuilder {
         ).map_err(|e| ExecutionError::Serialization(format!("Failed to compile message: {}", e)))?;
 
         let versioned_message = VersionedMessage::V0(message);
+        
         Ok(VersionedTransaction {
             message: versioned_message,
             signatures: vec![], // 签名稍后添加
