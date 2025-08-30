@@ -186,60 +186,6 @@ impl OptimizedStrategyManager {
         signal
     }
 
-    /// 创建新的交易策略 - 优化版本
-    pub async fn create_strategy_for_token(
-        &self,
-        mint: Pubkey,
-        config: Option<StrategyConfig>,
-    ) -> Result<String> {
-        // 原子检查策略数量限制，无锁操作
-        let current_count = self.strategy_count.load(Ordering::Acquire);
-        if current_count >= self.max_concurrent_strategies {
-            warn!("⚠️ 已达到最大并发策略数量限制 ({})", self.max_concurrent_strategies);
-            return Err(anyhow::anyhow!("超过最大并发策略数量限制"));
-        }
-
-        // 检查是否已有该代币的策略 - DashMap 的无锁读取
-        if self.strategies.contains_key(&mint) {
-            warn!("⚠️ 代币 {} 已有活跃策略", mint);
-            return Err(anyhow::anyhow!("该代币已有活跃策略"));
-        }
-
-        // 创建新策略
-        let strategy_config = config.unwrap_or_else(|| self.default_config.clone());
-        let strategy = OptimizedTradingStrategy::new(
-            mint,
-            strategy_config,
-            self.signal_sender.clone(),
-        );
-
-        let strategy_id = strategy.id.clone();
-        
-        info!("🎯 创建新的优化交易策略: {}", strategy_id);
-        info!("   🪙 代币地址: {}", mint);
-
-        // 🔧 修复：为策略设置停止通知发送器
-        strategy.set_strategy_stop_notifier(self.strategy_stop_sender.clone()).await;
-
-        // 启动策略
-        strategy.run().await?;
-
-        // 原子性地添加策略
-        match self.strategies.insert(mint, Arc::new(strategy)) {
-            Some(_existing) => {
-                warn!("⚠️ 覆盖已存在的策略: {:?}", mint);
-                info!("✅ 优化策略 {} 已更新并启动", strategy_id);
-            }
-            None => {
-                // 成功插入，增加计数器
-                self.strategy_count.fetch_add(1, Ordering::Release);
-                info!("✅ 优化策略 {} 已创建并启动", strategy_id);
-            }
-        }
-        
-        Ok(strategy_id)
-    }
-
     /// 停止特定代币的策略 - 优化版本
     pub async fn stop_strategy(&self, mint: &Pubkey) -> Result<()> {
         if let Some((_, strategy_arc)) = self.strategies.remove(mint) {
@@ -332,7 +278,7 @@ impl OptimizedStrategyManager {
             // 克隆 price_info 用于后续使用
             let price_info_clone = price_info.clone();
             
-            match self.create_strategy_for_token_with_price_and_creator(mint, Some(strategy_config), price_info_clone.clone(), creator_addr).await {
+            match self.create_strategy_for_token(mint, Some(strategy_config), price_info_clone.clone(), creator_addr).await {
                 Ok(_) => {
                     info!("🎉 ✅ 优化交易策略创建成功!");
                     info!("   🪙 代币地址: {}", mint);
@@ -407,7 +353,7 @@ impl OptimizedStrategyManager {
     }
 
     /// 🔧 新增：创建带价格和创建者信息的策略
-    pub async fn create_strategy_for_token_with_price_and_creator(
+    pub async fn create_strategy_for_token(
         &self,
         mint: Pubkey,
         config: Option<StrategyConfig>,

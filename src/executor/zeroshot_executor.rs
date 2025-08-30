@@ -152,7 +152,7 @@ impl ZeroShotExecutor {
                 // 使用简化版本，避免重复创建账户
                 self.transaction_builder.build_complete_pumpfun_buy_transaction_with_tip_and_manual_account(
                     &trade_params.mint,
-                    &self.wallet.pubkey(),
+                    &self.wallet,
                     trade_params.sol_amount,
                     trade_params.min_tokens_out,
                     creator,

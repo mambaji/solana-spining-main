@@ -126,7 +126,7 @@ impl TransactionBuilder {
     pub fn build_complete_pumpfun_buy_transaction_with_creator(
         &self,
         mint: &Pubkey,
-        buyer: &Pubkey,
+        buyer: &Keypair,
         sol_amount: u64,
         min_tokens_out: u64,
         creator: &Pubkey,
@@ -143,18 +143,18 @@ impl TransactionBuilder {
         // TODO: 添加账户存在性检查，暂时移除自动创建以避免重复
         
         // 3. 添加 PumpFun 买入指令 (程序内部会处理账户创建)
-        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, buyer, sol_amount, min_tokens_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, &buyer.pubkey(), sol_amount, min_tokens_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 4. 构建交易
-        self.build_transaction(instructions, buyer, recent_blockhash)
+        self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
     /// 构建完整的 PumpFun 买入交易 (手动创建账户版本，参考别人的实现)
     pub fn build_complete_pumpfun_buy_transaction_with_manual_account_creation(
         &self,
         mint: &Pubkey,
-        buyer: &Pubkey,
+        buyer: &Keypair,
         sol_amount: u64,
         min_tokens_out: u64,
         creator: &Pubkey,
@@ -166,22 +166,22 @@ impl TransactionBuilder {
         instructions.extend(self.build_compute_budget_instructions());
         
         // 2. 手动创建代币账户 (使用createAccountWithSeed方式)
-        let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, buyer)?;
+        let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, &buyer.pubkey())?;
         instructions.extend(manual_account_instructions);
         
         // 3. 添加 PumpFun 买入指令
-        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, buyer, sol_amount, min_tokens_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, &buyer.pubkey(), sol_amount, min_tokens_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 4. 构建交易
-        self.build_transaction(instructions, buyer, recent_blockhash)
+        self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
     /// 构建完整的 PumpFun 卖出交易 (无需创建账户)
     pub fn build_complete_pumpfun_sell_transaction(
         &self,
         mint: &Pubkey,
-        seller: &Pubkey,
+        seller: &Keypair,
         token_amount: u64,
         min_sol_out: u64,
         creator: &Pubkey,
@@ -193,18 +193,18 @@ impl TransactionBuilder {
         instructions.extend(self.build_sell_compute_budget_instructions());
         
         // 2. 添加 PumpFun 卖出指令 (不需要创建账户，直接使用已存在的ATA)
-        let pumpfun_instruction = self.build_pumpfun_sell_with_creator(mint, seller, token_amount, min_sol_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_sell_with_creator(mint, &seller.pubkey(), token_amount, min_sol_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 3. 构建交易
-        self.build_transaction(instructions, seller, recent_blockhash)
+        self.build_signed_transaction(instructions, seller, recent_blockhash)
     }
 
     /// 构建带 tip 的完整 PumpFun 卖出交易
     pub fn build_complete_pumpfun_sell_transaction_with_tip(
         &self,
         mint: &Pubkey,
-        seller: &Pubkey,
+        seller: &Keypair,
         token_amount: u64,
         min_sol_out: u64,
         creator: &Pubkey,
@@ -217,21 +217,21 @@ impl TransactionBuilder {
         instructions.extend(self.build_sell_compute_budget_instructions());
         
         // 2. 添加 PumpFun 卖出指令
-        let pumpfun_instruction = self.build_pumpfun_sell_with_creator(mint, seller, token_amount, min_sol_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_sell_with_creator(mint, &seller.pubkey(), token_amount, min_sol_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 3. 添加 tip 指令 (在流程最后执行)
         instructions.push(tip_instruction);
         
         // 4. 构建交易
-        self.build_transaction(instructions, seller, recent_blockhash)
+        self.build_signed_transaction(instructions, seller, recent_blockhash)
     }
 
     /// 构建带 tip 的完整 PumpFun 买入交易
     pub fn build_complete_pumpfun_buy_transaction_with_tip(
         &self,
         mint: &Pubkey,
-        buyer: &Pubkey,
+        buyer: &Keypair,
         sol_amount: u64,
         min_tokens_out: u64,
         creator: &Pubkey,
@@ -244,21 +244,21 @@ impl TransactionBuilder {
         instructions.extend(self.build_compute_budget_instructions());
         
         // 2. 添加 PumpFun 买入指令 (程序内部会处理账户创建)
-        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, buyer, sol_amount, min_tokens_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, &buyer.pubkey(), sol_amount, min_tokens_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 3. 添加 tip 指令 (在流程最后执行)
         instructions.push(tip_instruction);
         
         // 4. 构建交易
-        self.build_transaction(instructions, buyer, recent_blockhash)
+        self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
     /// 构建带 tip 的完整 PumpFun 买入交易 (手动账户创建版本)
     pub fn build_complete_pumpfun_buy_transaction_with_tip_and_manual_account(
         &self,
         mint: &Pubkey,
-        buyer: &Pubkey,
+        buyer: &Keypair,
         sol_amount: u64,
         min_tokens_out: u64,
         creator: &Pubkey,
@@ -271,18 +271,18 @@ impl TransactionBuilder {
         instructions.extend(self.build_compute_budget_instructions());
         
         // 2. 手动创建代币账户 (使用createAccountWithSeed方式)
-        let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, buyer)?;
+        let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, &buyer.pubkey())?;
         instructions.extend(manual_account_instructions);
         
         // 3. 添加 PumpFun 买入指令
-        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, buyer, sol_amount, min_tokens_out, creator)?;
+        let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, &buyer.pubkey(), sol_amount, min_tokens_out, creator)?;
         instructions.push(pumpfun_instruction);
         
         // 4. 添加 tip 指令 (在流程最后执行)
         instructions.push(tip_instruction);
         
         // 5. 构建交易
-        self.build_transaction(instructions, buyer, recent_blockhash)
+        self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
     /// 构建手动代币账户创建指令 (参考别人的交易方式)
@@ -718,27 +718,6 @@ impl TransactionBuilderTrait for TransactionBuilder {
             .map_err(|e| ExecutionError::Serialization(format!("Failed to sign transaction: {}", e)))
     }
 
-    /// 构建未签名的交易 (保留用于向后兼容)
-    fn build_transaction(
-        &self,
-        instructions: Vec<Instruction>,
-        payer: &Pubkey,
-        recent_blockhash: Hash,
-    ) -> Result<VersionedTransaction, ExecutionError> {
-        let message = Message::try_compile(
-            payer,
-            &instructions,
-            &[], // 地址查找表 (暂时为空)
-            recent_blockhash,
-        ).map_err(|e| ExecutionError::Serialization(format!("Failed to compile message: {}", e)))?;
-
-        let versioned_message = VersionedMessage::V0(message);
-        
-        Ok(VersionedTransaction {
-            message: versioned_message,
-            signatures: vec![], // 签名稍后添加
-        })
-    }
 }
 
 #[cfg(test)]
