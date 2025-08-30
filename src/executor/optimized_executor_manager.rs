@@ -13,6 +13,7 @@ use crate::executor::{
     config::ExecutorConfig,
     zeroshot_executor::ZeroShotExecutor,
     blockhash_cache::BlockhashCache,
+    compute_budget::DynamicComputeBudgetManager,
 };
 
 /// 优化后的执行器管理器
@@ -124,6 +125,85 @@ impl OptimizedExecutorManager {
         });
 
         info!("🚀 优化执行器管理器初始化完成");
+        Ok(manager)
+    }
+
+    /// 使用外部计算预算管理器创建优化的执行器管理器 (避免多个实例)
+    pub async fn with_compute_budget_manager(
+        config: ExecutorConfig, 
+        blockhash_cache: Option<Arc<BlockhashCache>>,
+        compute_budget_manager: Arc<DynamicComputeBudgetManager>,
+    ) -> Result<Arc<Self>, ExecutionError> {
+        // 解析钱包私钥
+        let wallet = {
+            let private_key_bytes = bs58::decode(&config.wallet.private_key)
+                .into_vec()
+                .map_err(|e| ExecutionError::Configuration(format!("Invalid private key: {}", e)))?;
+            
+            if private_key_bytes.len() != 64 {
+                return Err(ExecutionError::Configuration("Private key must be 64 bytes".to_string()));
+            }
+            
+            Keypair::from_bytes(&private_key_bytes)
+                .map_err(|e| ExecutionError::Configuration(format!("Failed to create keypair: {}", e)))?
+        };
+
+        info!("🔑 优化执行器管理器(共享预算) - 钱包地址: {}", wallet.pubkey());
+
+        // 并行初始化所有执行器
+        let mut zeroshot_init_task = None;
+
+        // ZeroSlot执行器初始化 - 使用共享的计算预算管理器
+        if config.zeroshot.enabled {
+            let zeroshot_config = config.zeroshot.clone();
+            let zeroshot_wallet = wallet.insecure_clone();
+            let cache_for_zeroshot = blockhash_cache.clone();
+            let manager_for_zeroshot = compute_budget_manager.clone();
+            
+            zeroshot_init_task = Some(tokio::spawn(async move {
+                if let Some(cache) = cache_for_zeroshot {
+                    // 直接传递Arc，不需要克隆内部数据
+                    match ZeroShotExecutor::with_shared_compute_budget_manager(
+                        zeroshot_config, 
+                        zeroshot_wallet, 
+                        cache, 
+                        manager_for_zeroshot
+                    ) {
+                        Ok(executor) => {
+                            info!("✅ ZeroSlot执行器(共享预算)并行初始化成功");
+                            Some(Arc::new(executor))
+                        }
+                        Err(e) => {
+                            warn!("⚠️ ZeroSlot执行器(共享预算)初始化失败: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    warn!("⚠️ ZeroSlot需要BlockhashCache但未提供，跳过初始化");
+                    None
+                }
+            }));
+        }
+
+        // 等待所有初始化任务完成
+        let mut zeroshot_executor = None;
+        
+        if let Some(task) = zeroshot_init_task {
+            zeroshot_executor = task.await.unwrap_or(None);
+        }
+
+        if zeroshot_executor.is_none() {
+            return Err(ExecutionError::Configuration("No executors available after parallel initialization".to_string()));
+        }
+
+        let manager = Arc::new(Self {
+            config,
+            zeroshot_executor,
+            health_cache: Arc::new(RwLock::new(HealthCache::default())),
+            stats: Arc::new(RwLock::new(ExecutorManagerStats::default())),
+        });
+
+        info!("🚀 优化执行器管理器(共享预算)初始化完成");
         Ok(manager)
     }
 

@@ -87,6 +87,17 @@ impl TransactionBuilder {
         Ok(builder)
     }
 
+    /// 使用外部计算预算管理器创建交易构建器 (避免创建多个实例)
+    pub fn with_compute_budget_manager(compute_budget_manager: DynamicComputeBudgetManager) -> Self {
+        Self {
+            pumpfun_program_id: Pubkey::from_str("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
+                .expect("Invalid PumpFun program ID"),
+            compute_budget_manager,
+            default_fee_level: FeeLevel::Standard,
+            endpoint: None,
+        }
+    }
+
     /// 启动费用监控 (如果尚未启动)
     pub async fn start_fee_monitoring(&self) -> Result<(), ExecutionError> {
         self.compute_budget_manager.start_fee_monitoring().await
@@ -285,42 +296,27 @@ impl TransactionBuilder {
         self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
-    /// 构建手动代币账户创建指令 (参考别人的交易方式)
+    /// 构建手动代币账户创建指令 (使用关联代币账户方式)
     pub fn build_manual_token_account_creation(
         &self,
         mint: &Pubkey,
         owner: &Pubkey,
     ) -> Result<(Vec<Instruction>, Pubkey), ExecutionError> {
-        use solana_sdk::system_instruction;
-        use spl_token::instruction as token_instruction;
-        
         let mut instructions = Vec::new();
         
-        // 1. 生成种子和派生地址
-        let seed = format!("{:x}", rand::random::<u128>())[..32].to_string();
-        let token_account = Pubkey::create_with_seed(owner, &seed, &spl_token::id())
-            .map_err(|e| ExecutionError::Internal(format!("Failed to create account with seed: {}", e)))?;
+        // 1. 使用关联代币账户 (ATA) - 这是Solana生态系统的标准方式
+        let token_account = get_associated_token_address(owner, mint);
         
-        // 2. 创建账户指令
-        let create_account_instruction = system_instruction::create_account_with_seed(
-            owner,              // funding_account
-            &token_account,     // created_account  
-            owner,              // base_account
-            &seed,              // seed
-            2039280,            // lamports (代币账户的租金)
-            165,                // space (代币账户大小)
-            &spl_token::id(),   // owner (代币程序)
-        );
-        instructions.push(create_account_instruction);
+        info!("🔑 创建ATA代币账户: {}", token_account);
         
-        // 3. 初始化代币账户指令
-        let initialize_account_instruction = token_instruction::initialize_account3(
+        // 2. 创建关联代币账户指令
+        let create_ata_instruction = create_associated_token_account(
+            owner,              // payer (付费者)
+            owner,              // wallet (代币账户所有者)
+            mint,               // mint (代币mint地址)
             &spl_token::id(),   // token_program_id
-            &token_account,     // account
-            mint,               // mint
-            owner,              // owner
-        ).map_err(|e| ExecutionError::Internal(format!("Failed to create initialize instruction: {}", e)))?;
-        instructions.push(initialize_account_instruction);
+        );
+        instructions.push(create_ata_instruction);
         
         Ok((instructions, token_account))
     }
