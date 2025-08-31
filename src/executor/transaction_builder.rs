@@ -176,7 +176,7 @@ impl TransactionBuilder {
         // 1. 添加计算预算指令
         instructions.extend(self.build_compute_budget_instructions());
         
-        // 2. 手动创建代币账户 (使用createAccountWithSeed方式)
+        // 2. 手动创建代币账户 (使用createAccountWithSeed方式) 
         let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, &buyer.pubkey())?;
         instructions.extend(manual_account_instructions);
         
@@ -265,7 +265,7 @@ impl TransactionBuilder {
         self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
-    /// 构建带 tip 的完整 PumpFun 买入交易 (手动账户创建版本)
+    /// 构建带 tip 的完整 PumpFun 买入交易 (高效手动账户创建版本)
     pub fn build_complete_pumpfun_buy_transaction_with_tip_and_manual_account(
         &self,
         mint: &Pubkey,
@@ -281,7 +281,7 @@ impl TransactionBuilder {
         // 1. 添加计算预算指令 (必须在最前面)
         instructions.extend(self.build_compute_budget_instructions());
         
-        // 2. 手动创建代币账户 (使用createAccountWithSeed方式)
+        // 2. 手动创建代币账户 (使用成功的 createAccountWithSeed 方式)
         let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, &buyer.pubkey())?;
         instructions.extend(manual_account_instructions);
         
@@ -292,31 +292,51 @@ impl TransactionBuilder {
         // 4. 添加 tip 指令 (在流程最后执行)
         instructions.push(tip_instruction);
         
-        // 5. 构建交易
+        // 5. 构建交易 (不需要额外签名者)
         self.build_signed_transaction(instructions, buyer, recent_blockhash)
     }
 
-    /// 构建手动代币账户创建指令 (使用关联代币账户方式)
+    /// 构建手动代币账户创建指令 (使用成功的 createAccountWithSeed 方式)
     pub fn build_manual_token_account_creation(
         &self,
         mint: &Pubkey,
         owner: &Pubkey,
     ) -> Result<(Vec<Instruction>, Pubkey), ExecutionError> {
+        use solana_sdk::system_instruction;
+        use spl_token::instruction as token_instruction;
+        
         let mut instructions = Vec::new();
         
-        // 1. 使用关联代币账户 (ATA) - 这是Solana生态系统的标准方式
-        let token_account = get_associated_token_address(owner, mint);
+        // 1. 使用 createAccountWithSeed 创建账户 (基于成功交易分析)
+        let seed = format!("{:08x}", rand::random::<u32>()); // 8位十六进制种子
+        let token_account = Pubkey::create_with_seed(owner, &seed, &spl_token::id())
+            .map_err(|e| ExecutionError::Internal(format!("Failed to create account with seed: {}", e)))?;
         
-        info!("🔑 创建ATA代币账户: {}", token_account);
+        info!("🔑 创建代币账户 (with seed): {}, seed: {}", token_account, seed);
         
-        // 2. 创建关联代币账户指令
-        let create_ata_instruction = create_associated_token_account(
-            owner,              // payer (付费者)
-            owner,              // wallet (代币账户所有者)
-            mint,               // mint (代币mint地址)
-            &spl_token::id(),   // token_program_id
+        // 2. 创建账户指令 (使用种子)
+        let lamports = 2039280; // 代币账户所需的最小租金
+        let space = 165; // SPL代币账户的标准大小
+        
+        let create_account_instruction = system_instruction::create_account_with_seed(
+            owner,              // from (付费者)
+            &token_account,     // new_account (新账户)
+            owner,              // base (基础账户)
+            &seed,              // seed (种子)
+            lamports,           // lamports (租金)
+            space,              // space (账户大小)
+            &spl_token::id(),   // owner (程序所有者)
         );
-        instructions.push(create_ata_instruction);
+        instructions.push(create_account_instruction);
+        
+        // 3. 初始化代币账户指令 (SPL Token程序)
+        let initialize_account_instruction = token_instruction::initialize_account(
+            &spl_token::id(),   // token_program_id
+            &token_account,     // account (要初始化的账户)
+            mint,               // mint (代币mint)
+            owner,              // owner (账户所有者)
+        ).map_err(|e| ExecutionError::Internal(format!("Failed to create initialize_account instruction: {}", e)))?;
+        instructions.push(initialize_account_instruction);
         
         Ok((instructions, token_account))
     }
@@ -700,6 +720,20 @@ impl TransactionBuilderTrait for TransactionBuilder {
         payer: &Keypair,
         recent_blockhash: Hash,
     ) -> Result<VersionedTransaction, ExecutionError> {
+        self.build_signed_transaction_with_additional_signers(instructions, payer, &[], recent_blockhash)
+    }
+
+}
+
+impl TransactionBuilder {
+    /// 构建并签名交易 (支持额外签名者) - 专用于手动账户创建
+    pub fn build_signed_transaction_with_additional_signers(
+        &self,
+        instructions: Vec<Instruction>,
+        payer: &Keypair,
+        additional_signers: &[Keypair],
+        recent_blockhash: Hash,
+    ) -> Result<VersionedTransaction, ExecutionError> {
         let message = Message::try_compile(
             &payer.pubkey(),
             &instructions,
@@ -709,11 +743,14 @@ impl TransactionBuilderTrait for TransactionBuilder {
 
         let versioned_message = VersionedMessage::V0(message);
         
+        // 构建签名者列表：payer + 额外签名者
+        let mut signers = vec![payer];
+        signers.extend(additional_signers.iter());
+        
         // 创建签名的交易
-        VersionedTransaction::try_new(versioned_message, &[payer])
+        VersionedTransaction::try_new(versioned_message, &signers)
             .map_err(|e| ExecutionError::Serialization(format!("Failed to sign transaction: {}", e)))
     }
-
 }
 
 #[cfg(test)]
@@ -776,6 +813,25 @@ mod tests {
         assert_eq!(data.len(), 24, "买入指令数据长度应该是24字节");
         
         println!("✅ 买入指令数据验证通过: {:?}", data);
+    }
+
+    #[test]
+    fn test_ata_calculation() {
+        // 验证失败交易中的ATA地址计算
+        let user = Pubkey::try_from("GrFqNyRtKoHdGAUfZTS3oRMZJeGxrbAt1hyyDJD5YN8S").unwrap();
+        let mint = Pubkey::try_from("5LkRMviCAsmko8WW53giuomstk1u165es73JEeqppump").unwrap();
+        let expected_ata = Pubkey::try_from("6pLKHMcFQhsMQgvkee9tZmEVHFCFUc8B14amF4P3cVb8").unwrap();
+        
+        let calculated_ata = get_associated_token_address(&user, &mint);
+        
+        println!("用户地址: {}", user);
+        println!("代币mint: {}", mint);
+        println!("期望ATA: {}", expected_ata);
+        println!("计算ATA: {}", calculated_ata);
+        
+        assert_eq!(calculated_ata, expected_ata, "ATA地址计算不匹配！");
+        
+        println!("✅ ATA地址计算验证通过");
     }
 }
 

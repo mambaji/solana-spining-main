@@ -12,8 +12,8 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 /// PumpFun 固定计算单元配置 - 将被配置文件覆盖
-pub const PUMPFUN_BUY_CU: u32 = 68888;
-pub const PUMPFUN_SELL_CU: u32 = 58888;
+pub const PUMPFUN_BUY_CU: u32 = 120000;  // 基于对比分析，提供更大安全边距以应对各种链上状态
+pub const PUMPFUN_SELL_CU: u32 = 68888;
 
 /// 计算预算档位枚举
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

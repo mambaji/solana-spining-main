@@ -174,8 +174,8 @@ impl ZeroShotExecutor {
         // 使用transaction_builder的统一方法构建交易
         if trade_params.is_buy {
             if let Some(creator) = &trade_params.creator {
-                // 使用程序自动账户创建版本，让PumpFun程序处理账户创建
-                self.transaction_builder.build_complete_pumpfun_buy_transaction_with_tip(
+                // 基于链上错误分析，PumpFun程序不会自动创建ATA，需要手动创建
+                self.transaction_builder.build_complete_pumpfun_buy_transaction_with_tip_and_manual_account(
                     &trade_params.mint,
                     &self.wallet,
                     trade_params.sol_amount,
