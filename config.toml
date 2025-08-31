@@ -114,7 +114,7 @@ base_priority_fee = 10000
 max_priority_fee = 100000000
 
 [compute_budget.pumpfun_buy]
-compute_units = 68888
+compute_units = 120000  # 基于对比分析，提供更大安全边距以应对各种链上状态
 [compute_budget.pumpfun_buy.fee_tiers]
 economy = 25
 standard = 50

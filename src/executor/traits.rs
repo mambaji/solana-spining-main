@@ -138,15 +138,7 @@ pub trait TransactionBuilder {
         signal: &crate::strategy::TradeSignal,
         compute_budget_manager: Option<&crate::executor::compute_budget::DynamicComputeBudgetManager>,
     ) -> Vec<solana_sdk::instruction::Instruction>;
-
-    /// 构建完整的交易 (未签名)
-    fn build_transaction(
-        &self,
-        instructions: Vec<solana_sdk::instruction::Instruction>,
-        payer: &Pubkey,
-        recent_blockhash: solana_sdk::hash::Hash,
-    ) -> Result<solana_sdk::transaction::VersionedTransaction, ExecutionError>;
-
+    
     /// 构建并签名交易
     fn build_signed_transaction(
         &self,

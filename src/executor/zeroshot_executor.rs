@@ -18,6 +18,7 @@ use crate::executor::{
     config::ZeroShotConfig,
     transaction_builder::TransactionBuilder,
     blockhash_cache::BlockhashCache,
+    compute_budget::DynamicComputeBudgetManager,
 };
 
 /// ZeroSlot交易执行器
@@ -42,6 +43,30 @@ impl ZeroShotExecutor {
             client,
             wallet,
             transaction_builder: TransactionBuilder::new(),
+            blockhash_cache,
+        })
+    }
+
+    /// 使用共享的计算预算管理器创建新的ZeroSlot执行器 (避免多个实例)
+    pub fn with_shared_compute_budget_manager(
+        config: ZeroShotConfig, 
+        wallet: Keypair, 
+        blockhash_cache: Arc<BlockhashCache>,
+        compute_budget_manager: Arc<DynamicComputeBudgetManager>,
+    ) -> Result<Self, ExecutionError> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.timeout_seconds))
+            .build()
+            .map_err(|e| ExecutionError::Configuration(format!("Failed to create HTTP client: {}", e)))?;
+
+        // 从Arc中提取值，并传递给TransactionBuilder
+        let manager_clone = (*compute_budget_manager).clone();
+
+        Ok(Self {
+            config,
+            client,
+            wallet,
+            transaction_builder: TransactionBuilder::with_compute_budget_manager(manager_clone),
             blockhash_cache,
         })
     }
@@ -149,10 +174,10 @@ impl ZeroShotExecutor {
         // 使用transaction_builder的统一方法构建交易
         if trade_params.is_buy {
             if let Some(creator) = &trade_params.creator {
-                // 使用简化版本，避免重复创建账户
+                // 基于链上错误分析，PumpFun程序不会自动创建ATA，需要手动创建
                 self.transaction_builder.build_complete_pumpfun_buy_transaction_with_tip_and_manual_account(
                     &trade_params.mint,
-                    &self.wallet.pubkey(),
+                    &self.wallet,
                     trade_params.sol_amount,
                     trade_params.min_tokens_out,
                     creator,

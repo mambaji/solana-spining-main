@@ -168,6 +168,9 @@ async fn main() -> Result<()> {
         }
     };
 
+    // 创建计算预算管理器 (在执行器管理器之前)
+    let shared_compute_budget_manager = create_compute_budget_manager(app_config, &config_manager).await?;
+
     // 初始化执行器管理器
     let executor_manager = if args.trading_enabled {
         // 检查服务可用性
@@ -187,13 +190,27 @@ async fn main() -> Result<()> {
             
             let executor_config = create_executor_config_from_app_config(app_config, &config_manager)?;
             
-            match OptimizedExecutorManager::new(executor_config, blockhash_cache.clone()).await {
+            // 根据是否有共享的计算预算管理器选择构造函数
+            let manager_result = if let Some(ref shared_manager) = shared_compute_budget_manager {
+                info!("🔗 使用共享的计算预算管理器创建执行器管理器");
+                OptimizedExecutorManager::with_compute_budget_manager(
+                    executor_config, 
+                    blockhash_cache.clone(),
+                    shared_manager.clone()
+                ).await
+            } else {
+                info!("📋 使用默认方式创建执行器管理器");
+                OptimizedExecutorManager::new(executor_config, blockhash_cache.clone()).await
+            };
+
+            match manager_result {
                 Ok(manager) => {
-                    info!("交易执行器初始化成功");
+                    info!("✅ 交易执行器初始化成功 ({})", 
+                        if shared_compute_budget_manager.is_some() { "共享预算" } else { "独立预算" });
                     Some(manager)
                 }
                 Err(e) => {
-                    warn!("交易执行器初始化失败: {}，继续以只读模式运行", e);
+                    warn!("⚠️ 交易执行器初始化失败: {}，继续以只读模式运行", e);
                     None
                 }
             }
@@ -204,8 +221,8 @@ async fn main() -> Result<()> {
     };
 
     let result = match stream_type {
-        StreamType::PumpFun => run_pumpfun_stream(args, &config_manager, executor_manager, blockhash_cache.as_ref()).await,
-        StreamType::Letsbonk => run_letsbonk_stream(args, &config_manager, executor_manager, blockhash_cache.as_ref()).await,
+        StreamType::PumpFun => run_pumpfun_stream(args, &config_manager, executor_manager, blockhash_cache.as_ref(), shared_compute_budget_manager).await,
+        StreamType::Letsbonk => run_letsbonk_stream(args, &config_manager, executor_manager, blockhash_cache.as_ref(), shared_compute_budget_manager).await,
     };
 
     // 停止区块哈希缓存
@@ -443,14 +460,21 @@ async fn run_pumpfun_stream(
     args: Args, 
     config_manager: &ConfigManager,
     executor_manager: Option<Arc<OptimizedExecutorManager>>,
-    _blockhash_cache: Option<&Arc<BlockhashCache>>
+    _blockhash_cache: Option<&Arc<BlockhashCache>>,
+    shared_compute_budget_manager: Option<Arc<DynamicComputeBudgetManager>>,
 ) -> Result<()> {
     info!("启动 Shyft gRPC 监听");
     
     let app_config = &config_manager.app_config;
     
-    // 创建计算预算管理器
-    let compute_budget_manager = create_compute_budget_manager(app_config, config_manager).await?;
+    // 使用共享的计算预算管理器，如果没有则创建新的
+    let compute_budget_manager = if let Some(shared_manager) = shared_compute_budget_manager {
+        info!("🔗 使用共享的计算预算管理器");
+        Some(shared_manager)
+    } else {
+        info!("📋 创建新的计算预算管理器");
+        create_compute_budget_manager(app_config, config_manager).await?
+    };
     
     // 创建优化版策略管理器
     let strategy_config = solana_spining::StrategyConfig {
@@ -548,14 +572,21 @@ async fn run_letsbonk_stream(
     args: Args, 
     config_manager: &ConfigManager,
     executor_manager: Option<Arc<OptimizedExecutorManager>>,
-    _blockhash_cache: Option<&Arc<BlockhashCache>>
+    _blockhash_cache: Option<&Arc<BlockhashCache>>,
+    shared_compute_budget_manager: Option<Arc<DynamicComputeBudgetManager>>,
 ) -> Result<()> {
     info!("启动 Letsbonk 监听");
     
     let app_config = &config_manager.app_config;
     
-    // 🆕 创建计算预算管理器
-    let compute_budget_manager = create_compute_budget_manager(app_config, config_manager).await?;
+    // 使用共享的计算预算管理器，如果没有则创建新的
+    let compute_budget_manager = if let Some(shared_manager) = shared_compute_budget_manager {
+        info!("🔗 使用共享的计算预算管理器");
+        Some(shared_manager)
+    } else {
+        info!("📋 创建新的计算预算管理器");
+        create_compute_budget_manager(app_config, config_manager).await?
+    };
     
     // 创建优化版策略管理器
     let strategy_config = solana_spining::StrategyConfig {

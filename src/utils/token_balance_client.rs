@@ -13,6 +13,7 @@ use tokio::time::{sleep, Duration};
 /// 使用 Shyft RPC API 获取交易详情和代币余额
 pub struct TokenBalanceClient {
     rpc_endpoint: String,
+    api_key: String,
     client: reqwest::Client,
 }
 
@@ -28,7 +29,7 @@ pub struct TokenBalanceChange {
 
 impl TokenBalanceClient {
     /// 创建新的代币余额查询客户端
-    pub fn new(rpc_endpoint: String, _api_key: String) -> Self {
+    pub fn new(rpc_endpoint: String, api_key: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -36,6 +37,7 @@ impl TokenBalanceClient {
 
         Self {
             rpc_endpoint,
+            api_key,
             client,
         }
     }
@@ -287,8 +289,11 @@ impl TokenBalanceClient {
     async fn make_rpc_request(&self, request_body: Value) -> Result<Value> {
         debug!("📡 发送RPC请求: {}", serde_json::to_string_pretty(&request_body)?);
 
+        // 构建带API密钥的URL
+        let url_with_key = format!("{}?api_key={}", self.rpc_endpoint, self.api_key);
+
         let response = self.client
-            .post(&self.rpc_endpoint)
+            .post(url_with_key)
             .header("Content-Type", "application/json")
             .json(&request_body)
             .send()
