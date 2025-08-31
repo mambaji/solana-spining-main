@@ -270,9 +270,12 @@ impl TransactionBuilder {
         // 1. 添加计算预算指令 (必须在最前面)
         instructions.extend(self.build_compute_budget_instructions());
         
-        // 2. 手动创建代币账户 (使用createAccountWithSeed方式)
-        let (manual_account_instructions, _token_account) = self.build_manual_token_account_creation(mint, buyer)?;
-        instructions.extend(manual_account_instructions);
+        // 2. 创建关联代币账户
+        instructions.push(create_associated_token_account(
+            buyer,
+            buyer,
+            mint, 
+            &spl_token::id()));
         
         // 3. 添加 PumpFun 买入指令
         let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, buyer, sol_amount, min_tokens_out, creator)?;
@@ -533,6 +536,8 @@ impl TransactionBuilder {
             AccountMeta::new_readonly(token_program, false),       // 9. token_program
             AccountMeta::new_readonly(event_authority, false),     // 10. event_authority
             AccountMeta::new_readonly(self.pumpfun_program_id, false), // 11. pump.fun program
+            AccountMeta::new(global_volume_accumulator, false),    // 12. global_volume_accumulator ✅
+            AccountMeta::new(user_volume_accumulator, false),      // 13. user_volume_accumulator ✅
         ])
     }
 
