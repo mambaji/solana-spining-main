@@ -190,7 +190,35 @@ impl ZeroShotExecutor {
                 ));
             }
         } else {
-            return Err(ExecutionError::InvalidParams("Sell transactions not implemented yet".to_string()));
+            // 卖出交易逻辑
+            if let Some(creator) = &trade_params.creator {
+                if let Some(token_amount) = trade_params.token_amount {
+                    if let Some(min_sol_out) = trade_params.min_sol_out {
+                        // 构建卖出交易
+                        self.transaction_builder.build_complete_pumpfun_sell_transaction_with_tip(
+                            &trade_params.mint,
+                            &self.wallet,
+                            token_amount,
+                            min_sol_out,
+                            creator,
+                            tip_instruction,
+                            recent_blockhash,
+                        )
+                    } else {
+                        return Err(ExecutionError::InvalidParams(
+                            "min_sol_out is required for sell transactions".to_string()
+                        ));
+                    }
+                } else {
+                    return Err(ExecutionError::InvalidParams(
+                        "token_amount is required for sell transactions".to_string()
+                    ));
+                }
+            } else {
+                return Err(ExecutionError::InvalidParams(
+                    "Creator address is required for PumpFun sell transactions".to_string()
+                ));
+            }
         }
     }
 
@@ -275,9 +303,19 @@ impl TransactionExecutor for ZeroShotExecutor {
                 return Err(ExecutionError::InvalidParams("SOL amount cannot be zero for buy transactions".to_string()));
             }
         } else {
-            // 卖出交易验证
+            // 🔧 修复：完善卖出交易验证
             if params.token_amount.is_none() || params.token_amount.unwrap() == 0 {
                 return Err(ExecutionError::InvalidParams("Token amount is required and cannot be zero for sell transactions".to_string()));
+            }
+            
+            // 验证最小SOL输出（滑点保护）
+            if params.min_sol_out.is_none() || params.min_sol_out.unwrap() == 0 {
+                return Err(ExecutionError::InvalidParams("min_sol_out is required and cannot be zero for sell transactions".to_string()));
+            }
+            
+            // 验证创建者地址（PumpFun必需）
+            if params.creator.is_none() {
+                return Err(ExecutionError::InvalidParams("Creator address is required for sell transactions".to_string()));
             }
         }
 

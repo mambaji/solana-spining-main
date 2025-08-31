@@ -10,6 +10,8 @@ use solana_sdk::{
 use spl_associated_token_account::{get_associated_token_address, instruction::create_associated_token_account};
 use std::str::FromStr;
 use log::info;
+use crate::constant::accounts::{PUMPFUN, SYSTEM_PROGRAM, TOKEN_PROGRAM};
+use crate::constant::seeds::{GLOBAL_SEED, BONDING_CURVE_SEED, EVENT_AUTHORITY_SEED, CREATOR_VAULT_SEED};
 use crate::executor::{
     errors::ExecutionError, 
     traits::{TradeParams, TransactionBuilder as TransactionBuilderTrait},
@@ -56,8 +58,7 @@ impl TransactionBuilder {
     pub fn new() -> Self {
         Self {
             // PumpFun官方程序ID
-            pumpfun_program_id: Pubkey::from_str("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
-                .expect("Invalid PumpFun program ID"),
+            pumpfun_program_id: PUMPFUN,
             compute_budget_manager: DynamicComputeBudgetManager::new(
                 ComputeBudgetConfig::default(),
                 None, // 可以后续设置RPC客户端
@@ -70,8 +71,7 @@ impl TransactionBuilder {
     /// 创建带RPC客户端的交易构建器并启动费用监控
     pub async fn with_rpc_client_and_monitoring(rpc_client: RpcClient, endpoint: String) -> Result<Self, ExecutionError> {
         let builder = Self {
-            pumpfun_program_id: Pubkey::from_str("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
-                .expect("Invalid PumpFun program ID"),
+            pumpfun_program_id: PUMPFUN,
             compute_budget_manager: DynamicComputeBudgetManager::new(
                 ComputeBudgetConfig::default(),
                 Some(rpc_client),
@@ -90,8 +90,7 @@ impl TransactionBuilder {
     /// 使用外部计算预算管理器创建交易构建器 (避免创建多个实例)
     pub fn with_compute_budget_manager(compute_budget_manager: DynamicComputeBudgetManager) -> Self {
         Self {
-            pumpfun_program_id: Pubkey::from_str("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
-                .expect("Invalid PumpFun program ID"),
+            pumpfun_program_id: PUMPFUN,
             compute_budget_manager,
             default_fee_level: FeeLevel::Standard,
             endpoint: None,
@@ -283,10 +282,10 @@ impl TransactionBuilder {
         
         // 2. 创建关联代币账户
         instructions.push(create_associated_token_account(
-            buyer,
-            buyer,
+            &buyer.pubkey(),
+            &buyer.pubkey(),
             mint, 
-            &spl_token::id()));
+            &TOKEN_PROGRAM));
         
         // 3. 添加 PumpFun 买入指令
         let pumpfun_instruction = self.build_pumpfun_buy_with_creator(mint, &buyer.pubkey(), sol_amount, min_tokens_out, creator)?;
@@ -410,17 +409,15 @@ impl TransactionBuilder {
         creator: Option<&Pubkey>,
     ) -> Result<Vec<AccountMeta>, ExecutionError> {
         // 系统程序
-        let system_program = Pubkey::from_str("11111111111111111111111111111111")
-            .map_err(|e| ExecutionError::Internal(format!("Invalid system program ID: {}", e)))?;
+        let system_program = SYSTEM_PROGRAM;
         
         // Token程序
-        let token_program = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-            .map_err(|e| ExecutionError::Internal(format!("Invalid token program ID: {}", e)))?;
+        let token_program = TOKEN_PROGRAM;
         
         // 1. global PDA - 根据 IDL seeds: ["global"]
         let (global, _) = Pubkey::find_program_address(
-            &[b"global"],
-            &self.pumpfun_program_id,
+            &[GLOBAL_SEED],
+            &PUMPFUN,
         );
         
         // 2. fee_recipient - 从全局状态读取，这里使用链上交易中的地址
@@ -428,8 +425,8 @@ impl TransactionBuilder {
         
         // 4. bonding_curve PDA - 根据 IDL seeds: ["bonding-curve", mint]  
         let (bonding_curve, _) = Pubkey::find_program_address(
-            &[b"bonding-curve", mint.as_ref()],
-            &self.pumpfun_program_id,
+            &[BONDING_CURVE_SEED, mint.as_ref()],
+            &PUMPFUN,
         );
         
         // 5. associated_bonding_curve - ATA of bonding_curve for mint
@@ -441,8 +438,8 @@ impl TransactionBuilder {
         // 10. creator_vault PDA - 使用传入的真实 creator 地址
         let creator_vault = if let Some(creator_addr) = creator {
             let (vault, _) = Pubkey::find_program_address(
-                &[b"creator-vault", creator_addr.as_ref()],
-                &self.pumpfun_program_id,
+                &[CREATOR_VAULT_SEED, creator_addr.as_ref()],
+                &PUMPFUN,
             );
             vault
         } else {
@@ -454,15 +451,15 @@ impl TransactionBuilder {
         
         // 11. event_authority PDA - 根据 IDL seeds: ["__event_authority"]
         let (event_authority, _) = Pubkey::find_program_address(
-            &[b"__event_authority"],
-            &self.pumpfun_program_id,
+            &[EVENT_AUTHORITY_SEED],
+            &PUMPFUN,
         );
 
         // 12. 全局交易量累加器 - 新增必需账户
         let global_volume_accumulator = get_global_volume_accumulator()?;
 
         // 13. 用户交易量累加器 PDA - 新增必需账户
-        let user_volume_accumulator = get_user_volume_accumulator_pda(user, &self.pumpfun_program_id);
+        let user_volume_accumulator = get_user_volume_accumulator_pda(user, &PUMPFUN);
 
         // 根据成功交易的精确顺序构建账户列表 (14个账户，与参考实现一致)
         Ok(vec![
@@ -477,7 +474,7 @@ impl TransactionBuilder {
             AccountMeta::new_readonly(token_program, false),       // 8. token_program
             AccountMeta::new(creator_vault, false),                // 9. creator_vault
             AccountMeta::new_readonly(event_authority, false),     // 10. event_authority
-            AccountMeta::new_readonly(self.pumpfun_program_id, false), // 11. pump.fun program ✅ 新增
+            AccountMeta::new_readonly(PUMPFUN, false), // 11. pump.fun program ✅ 新增
             AccountMeta::new(global_volume_accumulator, false),    // 12. global_volume_accumulator ✅
             AccountMeta::new(user_volume_accumulator, false),      // 13. user_volume_accumulator ✅
         ])
@@ -491,17 +488,15 @@ impl TransactionBuilder {
         creator: Option<&Pubkey>,
     ) -> Result<Vec<AccountMeta>, ExecutionError> {
         // 系统程序
-        let system_program = Pubkey::from_str("11111111111111111111111111111111")
-            .map_err(|e| ExecutionError::Internal(format!("Invalid system program ID: {}", e)))?;
+        let system_program = SYSTEM_PROGRAM;
         
         // Token程序
-        let token_program = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-            .map_err(|e| ExecutionError::Internal(format!("Invalid token program ID: {}", e)))?;
+        let token_program = TOKEN_PROGRAM;
         
         // 1. global PDA
         let (global, _) = Pubkey::find_program_address(
-            &[b"global"],
-            &self.pumpfun_program_id,
+            &[GLOBAL_SEED],
+            &PUMPFUN,
         );
         
         // 2. fee_recipient - 卖出使用不同的fee账户
@@ -509,8 +504,8 @@ impl TransactionBuilder {
         
         // 4. bonding_curve PDA  
         let (bonding_curve, _) = Pubkey::find_program_address(
-            &[b"bonding-curve", mint.as_ref()],
-            &self.pumpfun_program_id,
+            &[BONDING_CURVE_SEED, mint.as_ref()],
+            &PUMPFUN,
         );
         
         // 5. associated_bonding_curve - ATA of bonding_curve for mint
@@ -522,8 +517,8 @@ impl TransactionBuilder {
         // 9. creator_vault PDA
         let creator_vault = if let Some(creator_addr) = creator {
             let (vault, _) = Pubkey::find_program_address(
-                &[b"creator-vault", creator_addr.as_ref()],
-                &self.pumpfun_program_id,
+                &[CREATOR_VAULT_SEED, creator_addr.as_ref()],
+                &PUMPFUN,
             );
             vault
         } else {
@@ -534,9 +529,15 @@ impl TransactionBuilder {
         
         // 11. event_authority PDA
         let (event_authority, _) = Pubkey::find_program_address(
-            &[b"__event_authority"],
-            &self.pumpfun_program_id,
+            &[EVENT_AUTHORITY_SEED],
+            &PUMPFUN,
         );
+
+        // 12. 全局交易量累加器 - 新增必需账户
+        let global_volume_accumulator = get_global_volume_accumulator()?;
+
+        // 13. 用户交易量累加器 PDA - 新增必需账户
+        let user_volume_accumulator = get_user_volume_accumulator_pda(user, &PUMPFUN);
 
         // 卖出账户列表 (12个账户，基于链上数据)
         Ok(vec![
@@ -551,7 +552,7 @@ impl TransactionBuilder {
             AccountMeta::new(creator_vault, false),                // 8. creator_vault
             AccountMeta::new_readonly(token_program, false),       // 9. token_program
             AccountMeta::new_readonly(event_authority, false),     // 10. event_authority
-            AccountMeta::new_readonly(self.pumpfun_program_id, false), // 11. pump.fun program
+            AccountMeta::new_readonly(PUMPFUN, false),             // 11. pump.fun program
             AccountMeta::new(global_volume_accumulator, false),    // 12. global_volume_accumulator ✅
             AccountMeta::new(user_volume_accumulator, false),      // 13. user_volume_accumulator ✅
         ])
@@ -612,7 +613,7 @@ impl TransactionBuilderTrait for TransactionBuilder {
         let accounts = self.get_pumpfun_accounts(&trade, buyer, Some(creator))?;
 
         Ok(Instruction {
-            program_id: self.pumpfun_program_id,
+            program_id: PUMPFUN,
             accounts,
             data: instruction_data,
         })
@@ -637,7 +638,7 @@ impl TransactionBuilderTrait for TransactionBuilder {
         let accounts = self.get_pumpfun_accounts(&trade, seller, Some(creator))?;
 
         Ok(Instruction {
-            program_id: self.pumpfun_program_id,
+            program_id: PUMPFUN,
             accounts,
             data: instruction_data,
         })

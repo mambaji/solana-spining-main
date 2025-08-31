@@ -146,13 +146,13 @@ impl TradeSignal {
     ) -> Self {
         // 🔧 优化：卖出信号不预先计算SOL金额
         // 所有滑点保护计算统一在 to_trade_params() 中处理
-        // sol_amount 字段对卖出信号无意义，设为0
+        // sol_amount 字段对卖出信号无意义，设为0（将在to_trade_params中重新计算为min_sol_out）
 
         Self {
             strategy_id,
             mint,
             signal_type: TradeSignalType::Sell,
-            sol_amount: 0, // 卖出信号不需要预设SOL金额
+            sol_amount: 0, // 🔧 卖出信号时设为0，将在to_trade_params中重新计算为min_sol_out
             token_amount: Some(token_amount),
             max_slippage_bps,
             priority: SignalPriority::High,
@@ -186,7 +186,7 @@ impl TradeSignal {
             strategy_id,
             mint,
             signal_type: TradeSignalType::Sell,
-            sol_amount: 0, // 紧急卖出也不需要预设SOL金额
+            sol_amount: 0, // 🔧 紧急卖出时设为0，将在to_trade_params中重新计算为min_sol_out
             token_amount: Some(token_amount),
             max_slippage_bps: 9999, // 99.99% 滑点容忍度，基本不限制
             priority: SignalPriority::Critical,
@@ -218,7 +218,7 @@ impl TradeSignal {
             strategy_id,
             mint,
             signal_type: TradeSignalType::Sell,
-            sol_amount: 1, // 设置为1 lamport作为最低价格保护
+            sol_amount: 1, // 🔧 无价格紧急卖出时设为1 lamport作为最低保护，将在to_trade_params中重新计算
             token_amount: Some(token_amount),
             max_slippage_bps: 9999, // 99.99% 滑点容忍度，基本不限制
             priority: SignalPriority::Critical,
@@ -352,6 +352,13 @@ impl TradeSignal {
 
     /// 转换为交易参数 - 🔧 改进版：使用真实价格进行精确滑点计算
     pub fn to_trade_params(&self) -> crate::executor::TradeParams {
+        let sol_amount = if matches!(self.signal_type, TradeSignalType::Buy) {
+            self.sol_amount
+        } else {
+            // 🔧 修复：卖出交易时sol_amount设为0，不需要输入SOL
+            0
+        };
+
         let min_tokens_out = if matches!(self.signal_type, TradeSignalType::Buy) {
             if let Some(current_price) = self.current_price {
                 // ✅ 使用真实价格计算滑点保护
@@ -370,36 +377,38 @@ impl TradeSignal {
                 u64::MAX 
             }
         } else {
-            // 卖出时：使用代币数量作为参考
-            self.token_amount.unwrap_or(0)
+            // 🔧 修复：卖出时min_tokens_out设为0，不相关
+            0
         };
 
-        let sol_amount = if matches!(self.signal_type, TradeSignalType::Buy) {
-            self.sol_amount
+        let min_sol_out = if matches!(self.signal_type, TradeSignalType::Buy) {
+            None // 买入交易不需要最小SOL输出
         } else {
+            // 🔧 修复：卖出交易需要设置最小SOL输出
             if let Some(current_price) = self.current_price {
-                // ✅ 使用真实价格计算最小SOL输出
-                let token_amount = self.token_amount.unwrap_or(0) as f64;
-                let expected_sol = token_amount * current_price;
-                let slippage_factor = 1.0 - (self.max_slippage_bps as f64 / 10_000.0);
-                let min_sol = expected_sol * slippage_factor;
-                
-                info!("💸 精确滑点计算 | 价格: {:.9} SOL/token | 期望: {:.4} SOL | 最小: {:.4} SOL | 滑点: {}%", 
-                      current_price, expected_sol / 1_000_000_000.0, min_sol / 1_000_000_000.0, self.max_slippage_bps as f64 / 100.0);
-                
-                min_sol as u64
-            } else {
-                // 🔧 修改：处理无价格信息的紧急卖出
-                if self.reason.starts_with("EMERGENCY_NO_PRICE:") {
-                    // ✅ 无价格紧急卖出：使用最低保护价格，优先执行速度
-                    warn!("⚠️ 无价格紧急卖出，使用最低保护价格确保交易执行");
-                    info!("   💡 将使用1 lamport作为最低价格保护，交易优先执行速度");
-                    1 // 1 lamport 最低保护
+                if let Some(token_amount) = self.token_amount {
+                    // ✅ 使用真实价格计算最小SOL输出（滑点保护）
+                    let expected_sol = token_amount as f64 * current_price;
+                    let slippage_factor = 1.0 - (self.max_slippage_bps as f64 / 10_000.0);
+                    let min_sol = expected_sol * slippage_factor;
+                    
+                    info!("💸 卖出滑点计算: 代币={}, 价格={:.9}, 期望SOL={:.4}, 最小SOL={:.4}, 滑点={}%", 
+                          token_amount, current_price, expected_sol / 1_000_000_000.0, 
+                          min_sol / 1_000_000_000.0, self.max_slippage_bps as f64 / 100.0);
+                    
+                    Some(min_sol as u64)
                 } else {
-                    // ❌ 普通卖出信号缺少价格信息时，拒绝执行
-                    warn!("❌ 卖出信号缺少价格信息，无法进行精确滑点保护！建议使用 sell_with_price 创建信号");
-                    warn!("   💡 当前将使用保守的最小值，可能导致交易失败或获得较差价格");
-                    1 // 1 lamport，基本上没有价格保护
+                    warn!("⚠️ 卖出信号缺少token_amount，无法计算滑点保护");
+                    Some(1) // 1 lamport 最低保护
+                }
+            } else {
+                // 无价格信息时的处理
+                if self.reason.starts_with("EMERGENCY_NO_PRICE:") {
+                    warn!("🚨 无价格紧急卖出，使用最低保护价格");
+                    Some(1) // 1 lamport 最低保护
+                } else {
+                    warn!("⚠️ 卖出信号缺少价格信息，使用最低保护价格");
+                    Some(1) // 1 lamport 最低保护
                 }
             }
         };
@@ -418,12 +427,30 @@ impl TradeSignal {
         info!("⚡ 计算预算: CU={}, 档位={}, 自定义费={:?}", 
               self.compute_units, self.priority_fee_tier.as_str(), self.custom_priority_fee);
 
+        // 🔧 调试：记录卖出交易的参数信息
+        if matches!(self.signal_type, TradeSignalType::Sell) {
+            info!("🔍 卖出信号参数检查:");
+            info!("   🪙 token_amount: {:?}", self.token_amount);
+            info!("   💰 current_price: {:?}", self.current_price);
+            info!("   📊 max_slippage_bps: {}", self.max_slippage_bps);
+            info!("   👤 creator: {:?}", self.creator);
+        }
+
         crate::executor::TradeParams {
             mint: self.mint,
             sol_amount,
             min_tokens_out,
-            token_amount: None, // 买入交易不需要代币数量
-            min_sol_out: None,  // 买入交易不需要最小SOL输出
+            token_amount: if matches!(self.signal_type, TradeSignalType::Buy) {
+                None // 买入交易不需要代币数量
+            } else {
+                // 🔧 修复：卖出交易需要设置代币数量
+                let token_amount = self.token_amount;
+                if token_amount.is_none() {
+                    warn!("⚠️ 卖出信号缺少token_amount，这可能导致交易失败");
+                }
+                token_amount
+            },
+            min_sol_out,
             max_slippage_bps: self.max_slippage_bps,
             is_buy: matches!(self.signal_type, TradeSignalType::Buy),
             creator: self.creator, // ✅ 传递创建者地址
@@ -636,12 +663,13 @@ mod tests {
         let params = signal.to_trade_params();
         
         assert_eq!(params.mint, mint);
-        assert_eq!(params.min_tokens_out, 1000000); // 要卖出的代币数量
+        assert_eq!(params.min_tokens_out, 0); // 要卖出的代币数量
         assert_eq!(params.is_buy, false);
         
         // 验证滑点保护计算
         let expected_sol = 1000000.0 * 0.000001; // 1M tokens * 0.000001 SOL/token  
         let min_sol_expected = expected_sol * 0.97; // 97% (3%滑点)
-        assert_eq!(params.sol_amount, min_sol_expected as u64);
+        assert_eq!(params.sol_amount, 0); // 卖出时sol_amount为0
+        assert_eq!(params.min_sol_out, Some(min_sol_expected as u64));
     }
 }

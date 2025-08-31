@@ -6,6 +6,7 @@ pub mod config;
 pub mod strategy;
 pub mod executor;
 pub mod utils;
+pub mod constant;
 
 // Re-export commonly used types
 pub use config::StreamShyftConfig;
