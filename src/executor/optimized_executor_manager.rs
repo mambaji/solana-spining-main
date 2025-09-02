@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use solana_sdk::{signature::Keypair, signer::Signer};
+use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -419,6 +419,14 @@ impl OptimizedExecutorManager {
             panic!("没有可用的执行器，无法创建执行策略");
         }
     }
+
+    /// 🆕 获取用户的代币账户地址（基于种子派生，与交易构建使用相同逻辑）
+    /// 这个方法确保余额查询使用与买入交易完全相同的账户地址
+    pub async fn get_user_token_account_for_mint(&self, mint: &Pubkey, user: &Pubkey) -> Result<Pubkey, crate::executor::errors::ExecutionError> {
+        // 创建临时的TransactionBuilder来访问账户派生方法
+        let transaction_builder = crate::executor::transaction_builder::TransactionBuilder::new();
+        transaction_builder.get_user_token_account_address(mint, user)
+    }
 }
 
 // 这里需要根据实际的TransactionExecutor trait实现
@@ -438,18 +446,6 @@ impl TransactionExecutor for OptimizedExecutorManager {
                 self.execute_trade_parallel(trade_params, vec![strategy]).await
             }
         }
-    }
-
-    async fn get_balance(&self) -> Result<u64, ExecutionError> {
-        // 使用第一个可用的执行器
-        if let Some(zeroshot) = &self.zeroshot_executor {
-            return zeroshot.get_balance().await;
-        }
-        
-        Err(ExecutionError::ServiceUnavailable {
-            service: "All".to_string(),
-            reason: "No executors available for balance check".to_string(),
-        })
     }
 
     fn validate_params(&self, params: &TradeParams) -> Result<(), ExecutionError> {

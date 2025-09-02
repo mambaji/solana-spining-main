@@ -30,6 +30,8 @@ pub struct TokenEvent {
     pub timestamp: Option<i64>,
     /// 完整的原始事件数据
     pub raw_data: Option<serde_json::Value>,
+    /// 区块高度，用于区块对齐检查
+    pub block_height: Option<u64>,
 }
 
 #[derive(Debug, Clone)]

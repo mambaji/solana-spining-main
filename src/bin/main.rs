@@ -7,7 +7,6 @@ use std::sync::Arc;
 use solana_spining::{
     TokenEvent, TransactionType,
     ShyftStream, LetsbonkStream,
-    EventLogger,
     // 优化后的组件 - 只保留新方案
     OptimizedStrategyManager, OptimizedTokenFilter, OptimizedExecutorManager,
     // 新配置系统
@@ -494,15 +493,9 @@ async fn run_pumpfun_stream(
         Some(app_config.strategy.trading.max_positions as usize),
         optimized_filter,
         compute_budget_manager, // 🆕 传递计算预算管理器
+        _blockhash_cache.cloned(), // 传递区块哈希缓存用于区块对齐
     );
     
-    // 创建事件日志记录器
-    let event_logger = Arc::new(EventLogger::new(Some(format!(
-        "shyft_events_{}.jsonl", 
-        chrono::Utc::now().format("%Y%m%d_%H%M%S")
-    ))));
-    
-    info!("事件记录到: {}", event_logger.get_log_file_path());
     info!("最大并发策略数: {}", app_config.strategy.trading.max_positions);
     
     let config = solana_spining::StreamShyftConfig::new(
@@ -521,12 +514,10 @@ async fn run_pumpfun_stream(
 
     // 创建事件处理回调
     let strategy_manager_clone = strategy_manager.clone();
-    let event_logger_clone = event_logger.clone();
     
     stream.start_streaming(move |event: TokenEvent| {
         let strategy_manager_for_event = strategy_manager_clone.clone();
-        let event_logger_for_event = event_logger_clone.clone();
-        
+        info!("创建者/交易者钱包地址：{}", event.creator_wallet.as_deref().unwrap_or("Unknown"));
         // 记录关键事件
         match event.transaction_type {
             TransactionType::TokenCreation => {
@@ -550,11 +541,6 @@ async fn run_pumpfun_stream(
         tokio::spawn(async move {
             let _start_time = std::time::Instant::now();
             
-            // 记录事件到日志文件
-            if let Err(e) = event_logger_for_event.handle_event(&event).await {
-                error!("处理事件失败: {}", e);
-            }
-
             // 传递给优化版策略管理器处理
             if let Err(e) = strategy_manager_for_event.handle_token_event(&event).await {
                 error!("处理代币时出错: {}", e);
@@ -606,15 +592,9 @@ async fn run_letsbonk_stream(
         Some(app_config.strategy.trading.max_positions as usize),
         optimized_filter,
         compute_budget_manager, // 🆕 传递计算预算管理器
+        _blockhash_cache.cloned(), // 传递区块哈希缓存用于区块对齐
     );
     
-    // 创建事件日志记录器
-    let event_logger = Arc::new(EventLogger::new(Some(format!(
-        "letsbonk_events_{}.jsonl", 
-        chrono::Utc::now().format("%Y%m%d_%H%M%S")
-    ))));
-    
-    info!("BONK事件记录到: {}", event_logger.get_log_file_path());
     info!("最大并发策略数: {}", app_config.strategy.trading.max_positions);
     
     let config = solana_spining::StreamShyftConfig::new(
@@ -633,11 +613,9 @@ async fn run_letsbonk_stream(
 
     // 创建优化版事件处理回调
     let strategy_manager_clone = strategy_manager.clone();
-    let event_logger_clone = event_logger.clone();
     
     stream.start_streaming(move |event: TokenEvent| {
         let strategy_manager_for_event = strategy_manager_clone.clone();
-        let event_logger_for_event = event_logger_clone.clone();
         
         // 记录关键事件
         match event.transaction_type {
@@ -667,11 +645,6 @@ async fn run_letsbonk_stream(
         // 所有事件类型都传递给策略管理器处理
         tokio::spawn(async move {
             let _start_time = std::time::Instant::now();
-            
-            // 记录事件到日志文件
-            if let Err(e) = event_logger_for_event.handle_event(&event).await {
-                error!("处理事件失败: {}", e);
-            }
             
             // 传递给策略管理器处理
             if let Err(e) = strategy_manager_for_event.handle_token_event(&event).await {

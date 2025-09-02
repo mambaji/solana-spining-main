@@ -280,6 +280,12 @@ impl TradeSignal {
         self
     }
 
+    /// 🔧 新增：设置创建者地址
+    pub fn with_creator(mut self, creator: Pubkey) -> Self {
+        self.creator = Some(creator);
+        self
+    }
+
     /// 🔧 新增：设置价格信息
     pub fn with_price(mut self, current_price: f64, price_source: String) -> Self {
         self.current_price = Some(current_price);

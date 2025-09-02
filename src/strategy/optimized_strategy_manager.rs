@@ -1,10 +1,9 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use log::{info, warn, error};
-use solana_sdk::{pubkey::Pubkey, signature::Signature, signer::Signer};
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::str::FromStr;
 use tokio::sync::mpsc;
 
 use crate::processors::TokenEvent;
@@ -12,6 +11,7 @@ use crate::executor::ExecutionResult;
 use crate::executor::optimized_executor_manager::OptimizedExecutorManager;
 use crate::executor::traits::TransactionExecutor;
 use crate::executor::compute_budget::{DynamicComputeBudgetManager, ComputeBudgetTier};
+use crate::executor::blockhash_cache::BlockhashCache;
 use crate::utils::TokenBalanceClient;
 use super::optimized_token_filter::OptimizedTokenFilter;
 use super::StrategyConfig;
@@ -26,6 +26,7 @@ use super::optimized_trading_strategy::{OptimizedTradingStrategy, OptimizedPosit
 /// 3. TokenFilter 变为无状态，只需要 Arc 包装
 /// 4. 细粒度的并发控制，提升吞吐量
 /// 5. 集成动态计算预算管理器
+/// 6. 集成区块哈希缓存用于区块对齐过滤
 pub struct OptimizedStrategyManager {
     /// 策略存储 - 使用 DashMap 实现无锁并发访问
     strategies: Arc<DashMap<Pubkey, Arc<OptimizedTradingStrategy>>>,
@@ -53,6 +54,9 @@ pub struct OptimizedStrategyManager {
     
     /// 🔧 修复：策略停止通知发送器 - 用于接收策略自动停止通知
     strategy_stop_sender: mpsc::UnboundedSender<Pubkey>,
+    
+    /// 区块哈希缓存 - 用于区块对齐过滤
+    blockhash_cache: Option<Arc<BlockhashCache>>,
 }
 
 impl OptimizedStrategyManager {
@@ -63,20 +67,35 @@ impl OptimizedStrategyManager {
         max_concurrent_strategies: Option<usize>,
         token_filter: OptimizedTokenFilter,
         compute_budget_manager: Option<Arc<DynamicComputeBudgetManager>>, // 🆕 新增参数
+        blockhash_cache: Option<Arc<BlockhashCache>>, // 区块哈希缓存参数
     ) -> Arc<Self> {
         let (signal_tx, mut signal_rx) = mpsc::unbounded_channel();
         
         // 🔧 修复：创建策略停止通知通道
         let (strategy_stop_tx, mut strategy_stop_rx) = mpsc::unbounded_channel();
         
-        // 尝试创建代币余额查询客户端
+        // 尝试创建代币余额查询客户端 - 增加详细的环境检查
         let token_balance_client = match TokenBalanceClient::from_env() {
             Ok(client) => {
                 info!("✅ 代币余额查询客户端初始化成功");
+                // 验证 API 密钥和端点配置
+                if let Ok(api_key) = std::env::var("SHYFT_RPC_API_KEY")
+                    .or_else(|_| std::env::var("SHYFT_API_KEY")) {
+                    info!("   🔑 API密钥: {}...", &api_key[..8.min(api_key.len())]);
+                }
+                if let Ok(endpoint) = std::env::var("SHYFT_RPC_ENDPOINT") {
+                    info!("   🌐 RPC端点: {}", endpoint);
+                } else {
+                    info!("   🌐 RPC端点: https://rpc.ny.shyft.to (默认)");
+                }
                 Some(Arc::new(client))
             }
             Err(e) => {
                 warn!("⚠️ 代币余额查询客户端初始化失败: {}", e);
+                warn!("   💡 请检查环境变量: SHYFT_RPC_API_KEY 和 SHYFT_RPC_ENDPOINT");
+                warn!("   💡 示例设置:");
+                warn!("      export SHYFT_RPC_API_KEY=your_api_key_here");
+                warn!("      export SHYFT_RPC_ENDPOINT=https://rpc.ny.shyft.to");
                 warn!("   将使用占位值作为代币数量，可能影响策略准确性");
                 None
             }
@@ -91,6 +110,14 @@ impl OptimizedStrategyManager {
             warn!("⚠️ 未提供计算预算管理器，将使用默认预算设置");
         }
         
+        // 记录区块哈希缓存状态
+        if let Some(ref cache) = blockhash_cache {
+            info!("✅ 区块哈希缓存已集成到策略管理器，用于区块对齐过滤");
+            info!("   运行状态: {}", if cache.is_running() { "正在运行" } else { "未运行" });
+        } else {
+            warn!("⚠️ 未提供区块哈希缓存，将跳过区块对齐检查");
+        }
+        
         let manager = Arc::new(Self {
             strategies: Arc::new(DashMap::new()),
             strategy_count: Arc::new(AtomicUsize::new(0)),
@@ -101,6 +128,7 @@ impl OptimizedStrategyManager {
             token_balance_client,
             compute_budget_manager, // 🆕 设置计算预算管理器
             strategy_stop_sender: strategy_stop_tx, // 🔧 修复：设置策略停止通知发送器
+            blockhash_cache, // 设置区块哈希缓存
         });
         
         // 启动信号处理循环
@@ -213,12 +241,41 @@ impl OptimizedStrategyManager {
     /// 2. 无状态代币评估
     /// 3. 快速路径优化
     /// 4. 🔧 新增：提取真实价格信息
+    /// 5. 区块对齐过滤
     pub async fn handle_token_event(&self, event: &TokenEvent) -> Result<()> {
         let mint = if let Some(mint_str) = &event.mint {
             mint_str.parse::<Pubkey>()?
         } else {
             return Ok(()); // 没有mint信息，跳过
         };
+
+        // 🆕 区块对齐检查 - 在处理代币创建事件前进行区块对齐过滤
+        if matches!(event.transaction_type, crate::processors::TransactionType::TokenCreation) {
+            if let Some(ref blockhash_cache) = self.blockhash_cache {
+                if let Some(event_block_height) = event.block_height {
+                    match blockhash_cache.get_current_slot().await {
+                        Ok(current_slot) => {
+                            let block_diff = current_slot.saturating_sub(event_block_height);
+                            const MAX_BLOCK_DIFF: u64 = 1000; // 最大允许相差10个区块
+                            
+                            if block_diff > MAX_BLOCK_DIFF {
+                                info!("❌ 区块对齐检查失败: mint={}, 事件区块={}, 当前区块={}, 相差={} (超过{})", 
+                                      mint, event_block_height, current_slot, block_diff, MAX_BLOCK_DIFF);
+                                return Ok(()); // 跳过此事件
+                            } else {
+                                info!("✅ 区块对齐检查通过: mint={}, 事件区块={}, 当前区块={}, 相差={}", 
+                                      mint, event_block_height, current_slot, block_diff);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("⚠️ 获取当前区块失败，跳过区块对齐检查: {}", e);
+                        }
+                    }
+                } else {
+                    warn!("⚠️ 事件缺少区块高度信息，跳过区块对齐检查: mint={}", mint);
+                }
+            }
+        }
 
         // 🔧 新增：从事件中提取价格信息
         let price_info = self.extract_price_from_event(event);
@@ -713,29 +770,77 @@ impl OptimizedStrategyManager {
         None
     }
 
-    /// 🔧 重构：简化代币数量获取，移除固定汇率回退
-    /// 现在所有价格信息都来自真实的链上数据，不再需要估算回退
+    /// 🔧 优化：使用基于种子的代币账户查询替代ATA
+    /// 用户建议的改进：直接查询代币账户余额，与交易构建使用相同的账户地址
     async fn get_token_amount_from_buy_result(
         &self, 
         result: &ExecutionResult, 
         mint: &Pubkey, 
         executor: &Arc<OptimizedExecutorManager>
     ) -> Result<u64> {
-        // 优先从余额客户端获取真实数量
         if let Some(balance_client) = &self.token_balance_client {
             if let Some(wallet_pubkey) = self.get_wallet_pubkey(executor).await {
-                info!("🔍 查询买入交易的实际代币数量...");
-                return balance_client.get_tokens_acquired_from_buy_transaction(
-                    &Signature::from_str(&result.signature.to_string()).unwrap_or_default(),
-                    mint,
-                    &wallet_pubkey,
-                ).await.map_err(|e| anyhow::anyhow!("余额查询失败: {}", e));
+                info!("🔍 使用基于种子的代币账户查询获取买入后的代币数量...");
+                info!("   交易签名: {}", result.signature);
+                info!("   代币mint: {}", mint);
+                info!("   钱包地址: {}", wallet_pubkey);
+                
+                // 🆕 关键修复：获取与买入交易使用完全相同的代币账户地址
+                match executor.get_user_token_account_for_mint(mint, &wallet_pubkey).await {
+                    Ok(token_account) => {
+                        info!("   代币账户: {}", token_account);
+                        
+                        // 使用基于种子派生的代币账户查询余额
+                        let mut retry_count = 0;
+                        let max_retries = 10;
+                        let base_delay = 500; // 基础延迟
+                        
+                        while retry_count < max_retries {
+                            match balance_client.get_token_account_balance(&token_account).await {
+                                Ok(current_balance) => {
+                                    if current_balance > 0 {
+                                        info!("✅ 第{}次尝试成功，基于种子的代币账户余额: {} tokens", retry_count + 1, current_balance);
+                                        // 对于新代币的首次购买，余额就是获得的数量
+                                        return Ok(current_balance);
+                                    } else {
+                                        // 余额为0，可能交易还未完全确认
+                                        retry_count += 1;
+                                        if retry_count < max_retries {
+                                            let delay_ms = base_delay * retry_count as u64;
+                                            warn!("⚠️ 代币账户余额为0，可能交易尚未完全确认，等待{}ms后重试 ({}/{})", 
+                                                  delay_ms, retry_count, max_retries);
+                                            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                                            continue;
+                                        } else {
+                                            return Err(anyhow::anyhow!("买入交易可能失败，代币账户余额仍为0"));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    retry_count += 1;
+                                    error!("❌ 第{}次代币账户余额查询失败: {}", retry_count, e);
+                                    if retry_count >= max_retries {
+                                        return Err(anyhow::anyhow!("代币账户余额查询失败（已重试{}次）: {}", max_retries, e));
+                                    }
+                                    
+                                    let delay_ms = base_delay * retry_count as u64;
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!("获取代币账户地址失败: {}", e));
+                    }
+                }
+            } else {
+                warn!("⚠️ 无法获取钱包公钥，请检查 WALLET_PRIVATE_KEY 环境变量");
             }
+        } else {
+            warn!("⚠️ 代币余额客户端未初始化，请检查 SHYFT_RPC_API_KEY 环境变量");
         }
         
-        // ❌ 移除了固定汇率估算回退逻辑
-        // 现在如果无法获取真实数量，直接返回错误，强制使用真实价格
-        Err(anyhow::anyhow!("余额客户端不可用或钱包公钥获取失败，无法确定真实代币数量"))
+        Err(anyhow::anyhow!("无法获取买入后的代币余额，请检查余额客户端配置"))
     }
 }
 

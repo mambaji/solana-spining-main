@@ -287,15 +287,6 @@ impl TransactionExecutor for ZeroShotExecutor {
         })
     }
 
-    /// 获取钱包余额 (简化版本，不调用0slot API)
-    async fn get_balance(&self) -> Result<u64, ExecutionError> {
-        // 使用Shyft或本地RPC获取余额，而不是0slot API
-        Err(ExecutionError::ServiceUnavailable {
-            service: "Balance".to_string(),
-            reason: "Balance check disabled for 0slot integration".to_string(),
-        })
-    }
-
     /// 验证交易参数
     fn validate_params(&self, params: &TradeParams) -> Result<(), ExecutionError> {
         if params.is_buy {

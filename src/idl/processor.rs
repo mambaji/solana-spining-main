@@ -537,6 +537,7 @@ impl IdlTransactionProcessor {
                 creator_wallet,
                 timestamp: Some(timestamp),
                 raw_data: Some(raw_data),
+                block_height: Some(slot),
             });
         }
 
@@ -593,51 +594,44 @@ impl IdlTransactionProcessor {
     fn extract_pumpfun_creator(&self, parsed_tx: &ParsedConfirmedTransaction) -> Option<String> {
         debug!("🔍 extract_pumpfun_creator: 开始提取创建者地址");
         
-        // 在PumpFun创建交易中，创建者是交易级别的签名者（fee payer）
-        // 不是某个特定指令的账户，而是所有指令中标记为 is_signer: true 且不是 mint 的账户
-        
-        // 检查是否有 initializeMint2 指令（代币创建的标志）
-        let has_mint_init = parsed_tx.compiled_instructions.iter()
-            .chain(parsed_tx.inner_instructions.iter())
-            .any(|instr| instr.name == "initializeMint2");
-            
-        debug!("🔍 extract_pumpfun_creator: has_mint_init = {}", has_mint_init);
-            
-        if !has_mint_init {
-            debug!("🔍 extract_pumpfun_creator: 没有initializeMint2指令，回退到通用逻辑");
-            // 如果不是代币创建交易，回退到通用逻辑
-            return self.extract_creator_wallet(parsed_tx);
-        }
-        
-        // 首先获取mint地址
-        let mint_address = self.extract_mint_from_instructions(&parsed_tx.compiled_instructions, &parsed_tx.inner_instructions);
-        debug!("🔍 extract_pumpfun_creator: mint地址 = {:?}", mint_address);
-        
-        // 从所有指令中找到签名者，但排除mint地址本身
-        for (idx, instruction) in parsed_tx.compiled_instructions.iter().enumerate() {
-            debug!("🔍 extract_pumpfun_creator: 检查指令 {} - {}", idx, instruction.name);
-            for (acc_idx, account) in instruction.accounts.iter().enumerate() {
-                debug!("🔍 extract_pumpfun_creator: 账户 {} - {} (is_signer: {})", acc_idx, account.pubkey, account.is_signer);
+        // 从PumpFun create指令中提取创建者地址
+        for instruction in &parsed_tx.compiled_instructions {
+            if instruction.program_id == self.pumpfun_program_id && instruction.name == "create" {
+                debug!("🔍 extract_pumpfun_creator: 找到create指令");
                 
-                if account.is_signer {
-                    let account_addr = account.pubkey.to_string();
-                    
-                    // 检查这个签名者是否是mint地址，如果是则跳过
-                    if let Some(ref mint_addr) = mint_address {
-                        if account_addr == *mint_addr {
-                            debug!("🔍 extract_pumpfun_creator: 跳过mint地址签名者: {}", account_addr);
-                            continue;
-                        }
+                // 根据IDL，PumpFun create指令中的创建者是"user"账户（是签名者）
+                for account in &instruction.accounts {
+                    if account.name == "user" && account.is_signer {
+                        let creator_addr = account.pubkey.to_string();
+                        debug!("🔍 extract_pumpfun_creator: 从create指令的user账户找到创建者: {}", creator_addr);
+                        return Some(creator_addr);
                     }
-                    
-                    debug!("🔍 extract_pumpfun_creator: 找到真实创建者: {}", account_addr);
-                    return Some(account_addr);
+                }
+                
+                // 后备方案：如果没有找到"user"账户，查找第一个签名者（排除mint）
+                let mint_address = self.extract_mint_from_instructions(&parsed_tx.compiled_instructions, &parsed_tx.inner_instructions);
+                for account in &instruction.accounts {
+                    if account.is_signer {
+                        let account_addr = account.pubkey.to_string();
+                        
+                        // 排除mint地址（mint在create指令中也是签名者）
+                        if let Some(ref mint_addr) = mint_address {
+                            if account_addr == *mint_addr {
+                                debug!("🔍 extract_pumpfun_creator: 跳过mint地址签名者: {}", account_addr);
+                                continue;
+                            }
+                        }
+                        
+                        debug!("🔍 extract_pumpfun_creator: 从create指令的签名者找到创建者: {}", account_addr);
+                        return Some(account_addr);
+                    }
                 }
             }
         }
         
-        debug!("🔍 extract_pumpfun_creator: 没有找到非mint签名者，返回None");
-        None
+        debug!("🔍 extract_pumpfun_creator: 没有找到create指令，使用通用逻辑");
+        // 如果没有找到create指令，回退到通用逻辑
+        self.extract_creator_wallet(parsed_tx)
     }
 
     /// 提取PumpFun买卖交易中的交易者钱包地址  
@@ -704,6 +698,7 @@ impl IdlTransactionProcessor {
                             creator_wallet,
                             timestamp: Some(timestamp),
                             raw_data: Some(raw_data),
+                            block_height: Some(slot),
                         });
                     }
                     "sell" => {
@@ -728,6 +723,7 @@ impl IdlTransactionProcessor {
                             creator_wallet,
                             timestamp: Some(timestamp),
                             raw_data: Some(raw_data),
+                            block_height: Some(slot),
                         });
                     }
                     _ => {

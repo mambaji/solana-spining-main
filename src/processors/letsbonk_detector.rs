@@ -98,6 +98,7 @@ impl LetsbonkDetector {
                     creator_wallet: Some(account_keys.get(0).cloned().unwrap_or("unknown".to_string())), // 第一个账户通常是创建者
                     timestamp: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64),
                     raw_data: None,
+                    block_height: Some(slot),
                 });
             }
         }
@@ -174,6 +175,7 @@ impl LetsbonkDetector {
                                                 creator_wallet: None,
                                                 timestamp: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64),
                                                 raw_data: None,
+                                                block_height: Some(slot),
                                             });
                                         } else {
                                             debug!("❌ mint地址不是bonk类型: {}", mint);
@@ -201,6 +203,7 @@ impl LetsbonkDetector {
                                                 creator_wallet: None,
                                                 timestamp: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64),
                                                 raw_data: None,
+                                                block_height: Some(slot),
                                             });
                                         } else {
                                             debug!("❌ mint地址不是bonk类型: {}", mint);
@@ -228,6 +231,7 @@ impl LetsbonkDetector {
                                                 creator_wallet: None,
                                                 timestamp: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64),
                                                 raw_data: None,
+                                                block_height: Some(slot),
                                             });
                                         } else {
                                             debug!("❌ mint地址不是bonk类型: {}", mint);
@@ -255,6 +259,7 @@ impl LetsbonkDetector {
                                                 creator_wallet: None,
                                                 timestamp: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64),
                                                 raw_data: None,
+                                                block_height: Some(slot),
                                             });
                                         } else {
                                             debug!("❌ mint地址不是bonk类型: {}", mint);

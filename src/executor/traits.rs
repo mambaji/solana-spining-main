@@ -77,9 +77,6 @@ pub trait TransactionExecutor: Send + Sync {
         strategy: ExecutionStrategy,
     ) -> Result<ExecutionResult, ExecutionError>;
 
-    /// 获取钱包余额
-    async fn get_balance(&self) -> Result<u64, ExecutionError>;
-
     /// 验证交易参数
     fn validate_params(&self, params: &TradeParams) -> Result<(), ExecutionError>;
 

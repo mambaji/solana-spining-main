@@ -484,6 +484,8 @@ impl OptimizedTradingStrategy {
             // 🔧 新增：传递价格信息
             current_price: self.current_price.clone(),
             price_source: self.price_source.clone(),
+            // 🔧 修复：传递创建者地址
+            creator: self.creator.clone(),
         });
 
         tokio::spawn(async move {
@@ -550,24 +552,36 @@ impl OptimizedTradingStrategy {
                 let emergency_signal = if let Some((price, source)) = self.get_current_price().await {
                     // ✅ 有价格信息时使用真实价格创建紧急卖出信号
                     info!("💰 使用真实价格创建紧急卖出信号: {:.9} SOL/token (来源: {})", price, source);
-                    TradeSignal::emergency_sell_with_price(
+                    let mut signal = TradeSignal::emergency_sell_with_price(
                         self.id.clone(),
                         self.mint,
                         token_amount,
                         "优化策略停止时的紧急平仓".to_string(),
                         price,
                         source,
-                    )
+                    );
+                    
+                    // 🔧 修复：设置创建者地址
+                    if let Some(creator) = self.get_creator().await {
+                        signal = signal.with_creator(creator);
+                    }
+                    signal
                 } else {
                     // ✅ 没有价格信息时直接创建无价格紧急卖出信号
                     warn!("⚠️ 策略停止时无法获取价格信息，创建无价格紧急卖出信号");
                     info!("   💡 将使用极高滑点容忍度确保紧急平仓执行");
-                    TradeSignal::emergency_sell_without_price(
+                    let mut signal = TradeSignal::emergency_sell_without_price(
                         self.id.clone(),
                         self.mint,
                         token_amount,
                         "策略停止时无价格紧急平仓".to_string(),
-                    )
+                    );
+                    
+                    // 🔧 修复：设置创建者地址
+                    if let Some(creator) = self.get_creator().await {
+                        signal = signal.with_creator(creator);
+                    }
+                    signal
                 };
 
                 if let Err(e) = self.signal_sender.send(emergency_signal) {
@@ -823,9 +837,17 @@ struct OptimizedStrategyHandle {
     // 🔧 新增：价格信息访问
     current_price: Arc<tokio::sync::RwLock<Option<f64>>>,
     price_source: Arc<tokio::sync::RwLock<Option<String>>>,
+    // 🔧 修复：新增创建者地址访问
+    creator: Arc<tokio::sync::RwLock<Option<Pubkey>>>,
 }
 
 impl OptimizedStrategyHandle {
+    /// 获取创建者地址
+    async fn get_creator(&self) -> Option<Pubkey> {
+        let creator = self.creator.read().await;
+        *creator
+    }
+
     /// 无锁检查卖出条件
     async fn check_sell_condition(&self) {
         let position_status = self.position.get_status_snapshot();
@@ -861,24 +883,36 @@ impl OptimizedStrategyHandle {
             let sell_signal = if let (Some(price), Some(source)) = self.get_current_price_info().await {
                 // ✅ 有价格信息时使用真实价格创建紧急卖出信号
                 info!("💰 使用真实价格创建紧急卖出信号: {:.9} SOL/token (来源: {})", price, source);
-                TradeSignal::emergency_sell_with_price(
+                let mut signal = TradeSignal::emergency_sell_with_price(
                     self.id.clone(),
                     self.mint,
                     token_amount,
                     format!("持仓{}秒后定时紧急卖出", self.config.holding_duration_seconds),
                     price,
                     source,
-                )
+                );
+                
+                // 🔧 修复：设置创建者地址
+                if let Some(creator) = self.get_creator().await {
+                    signal = signal.with_creator(creator);
+                }
+                signal
             } else {
                 // ✅ 没有价格信息时直接创建无价格紧急卖出信号
                 warn!("⚠️ 策略 {} 缺少价格信息，创建无价格紧急卖出信号", self.id);
                 info!("   💡 将使用极高滑点容忍度确保交易执行");
-                TradeSignal::emergency_sell_without_price(
+                let mut signal = TradeSignal::emergency_sell_without_price(
                     self.id.clone(),
                     self.mint,
                     token_amount,
                     format!("持仓{}秒后无价格紧急卖出", self.config.holding_duration_seconds),
-                )
+                );
+                
+                // 🔧 修复：设置创建者地址
+                if let Some(creator) = self.get_creator().await {
+                    signal = signal.with_creator(creator);
+                }
+                signal
             };
 
             if let Err(e) = self.signal_sender.send(sell_signal) {

@@ -1,13 +1,13 @@
 pub mod seeds {
     pub const GLOBAL_SEED: &[u8] = b"global";
 
-    pub const MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
+    pub const MINT_AUTHORITY_SEED: &[u8] = b"mint-authority";
 
-    pub const BONDING_CURVE_SEED: &[u8] = b"bonding_curve";
+    pub const BONDING_CURVE_SEED: &[u8] = b"bonding-curve";
 
     pub const METADATA_SEED: &[u8] = b"metadata";
 
-    pub const CREATOR_VAULT_SEED: &[u8] = b"creator_vault";
+    pub const CREATOR_VAULT_SEED: &[u8] = b"creator-vault";
 
     pub const EVENT_AUTHORITY_SEED: &[u8] = b"__event_authority";
 }

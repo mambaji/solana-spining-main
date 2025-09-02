@@ -7,6 +7,10 @@ edition = "2021"
 name = "solana-spining"
 path = "src/bin/main.rs"
 
+[[example]]
+name = "test_token_balance_client"
+path = "examples/test_token_balance_client.rs"
+
 [dependencies]
 tokio = { version = "1.21.2", features = ["rt-multi-thread", "fs", "full"] }
 dotenvy = "0.15"
@@ -32,6 +36,7 @@ futures = "0.3.24"
 prost = "0.13"
 tonic-health = "0.12"
 base64 = "0.22"
+borsh = "1.5"
 bs58 = "0.5"
 clap = { version = "4.3.0", features = ["derive"] }
 

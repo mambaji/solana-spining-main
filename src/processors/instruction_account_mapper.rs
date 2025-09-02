@@ -96,8 +96,10 @@ pub enum IdlType {
     Vec(Box<IdlType>),
     #[serde(rename = "array")]
     Array(Box<IdlType>, usize),
+    #[serde(rename = "defined")]
+    Defined { name: String },
     #[serde(untagged)]
-    Defined(String),
+    DefinedString(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,9 +126,66 @@ pub struct IdlTypeDefinition {
 #[serde(tag = "kind")]
 pub enum IdlTypeDefTy {
     #[serde(rename = "struct")]
-    Struct { fields: Vec<IdlField> },
+    Struct { 
+        #[serde(deserialize_with = "deserialize_struct_fields")]
+        fields: Vec<IdlField> 
+    },
     #[serde(rename = "enum")]
     Enum { variants: Vec<IdlEnumVariant> },
+}
+
+fn deserialize_struct_fields<'de, D>(deserializer: D) -> Result<Vec<IdlField>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Deserialize;
+    
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum FieldFormat {
+        Full(Vec<IdlField>),
+        Simple(Vec<String>),
+    }
+    
+    match FieldFormat::deserialize(deserializer)? {
+        FieldFormat::Full(fields) => Ok(fields),
+        FieldFormat::Simple(field_names) => {
+            Ok(field_names.into_iter().enumerate().map(|(i, name)| {
+                if name == "bool" {
+                    IdlField {
+                        name: format!("field_{}", i),
+                        type_: IdlType::Bool,
+                        docs: None,
+                    }
+                } else {
+                    // 处理其他基础类型
+                    let type_ = match name.as_str() {
+                        "u8" => IdlType::U8,
+                        "i8" => IdlType::I8,
+                        "u16" => IdlType::U16,
+                        "i16" => IdlType::I16,
+                        "u32" => IdlType::U32,
+                        "i32" => IdlType::I32,
+                        "u64" => IdlType::U64,
+                        "i64" => IdlType::I64,
+                        "f32" => IdlType::F32,
+                        "f64" => IdlType::F64,
+                        "u128" => IdlType::U128,
+                        "i128" => IdlType::I128,
+                        "string" => IdlType::String,
+                        "publicKey" => IdlType::PublicKey,
+                        "bytes" => IdlType::Bytes,
+                        _ => IdlType::DefinedString(name.clone()),
+                    };
+                    IdlField {
+                        name: format!("field_{}", i),
+                        type_,
+                        docs: None,
+                    }
+                }
+            }).collect())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
